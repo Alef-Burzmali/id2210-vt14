@@ -73,9 +73,9 @@ public final class Peer extends ComponentDefinition {
 	}
 
 	
-	Handler<RmPeerInit> handleInit = new Handler<RmPeerInit>() {
+	Handler<PeerInit> handleInit = new Handler<PeerInit>() {
                 @Override
-		public void handle(RmPeerInit init) {
+		public void handle(PeerInit init) {
 			self = init.getPeerSelf();
 			CyclonConfiguration cyclonConfiguration = init.getCyclonConfiguration();
 			rmConfiguration = init.getApplicationConfiguration();

@@ -18,11 +18,12 @@ import se.sics.kompics.timer.SchedulePeriodicTimeout;
 import se.sics.kompics.timer.Timer;
 
 import system.peer.Peer;
-import system.peer.RmPeerInit;
+import system.peer.PeerInit;
 import simulator.snapshot.Snapshot;
 import common.configuration.RmConfiguration;
 import common.configuration.Configuration;
 import common.configuration.CyclonConfiguration;
+import common.configuration.TManConfiguration;
 import common.peer.AvailableResources;
 import common.simulation.ConsistentHashtable;
 import common.simulation.GenerateReport;
@@ -46,6 +47,7 @@ public final class DataCenterSimulator extends ComponentDefinition {
     private BootstrapConfiguration bootstrapConfiguration;
     private CyclonConfiguration cyclonConfiguration;
     private RmConfiguration rmConfiguration;
+    private TManConfiguration tmanConfiguration;
     private Long identifierSpaceSize;
     private ConsistentHashtable<Long> ringNodes;
     private AsIpGenerator ipGenerator = AsIpGenerator.getInstance(125);
@@ -73,7 +75,8 @@ public final class DataCenterSimulator extends ComponentDefinition {
             bootstrapConfiguration = init.getBootstrapConfiguration();
             cyclonConfiguration = init.getCyclonConfiguration();
             rmConfiguration = init.getAggregationConfiguration();
-
+            tmanConfiguration = init.getTmanConfiguration();
+            
             identifierSpaceSize = cyclonConfiguration.getIdentifierSpaceSize();
 
             // generate periodic report
@@ -153,7 +156,7 @@ public final class DataCenterSimulator extends ComponentDefinition {
         connect(timer, peer.getNegative(Timer.class));
         
         AvailableResources ar = new AvailableResources(numCpus, memInMb);
-        trigger(new RmPeerInit(address, bootstrapConfiguration, cyclonConfiguration, 
+        trigger(new PeerInit(address, bootstrapConfiguration, cyclonConfiguration, 
                 rmConfiguration, ar), peer.getControl());
 
         trigger(new Start(), peer.getControl());
