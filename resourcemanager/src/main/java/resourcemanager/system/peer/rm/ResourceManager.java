@@ -81,7 +81,7 @@ public final class ResourceManager extends ComponentDefinition {
     private LinkedList<Job> pendingJobs;
     
     // Set of jobs currently processed by the worker
-    private Set<Job> activeJobs;
+    private LinkedList<Job> activeJobs;
 	
     public ResourceManager() {
 
@@ -180,6 +180,30 @@ public final class ResourceManager extends ComponentDefinition {
      * 				update available resources
    	 * 				send a ResourceAllocationResponse event
      */
+    
+    Handler<RequestResources.Release> handleResourceAllocationRelease = new Handler<RequestResources.Release>(){
+    	@Override
+    	public void handle(RequestResources.Release event){
+    		Job releasedJob = null;
+    		int releasedJobIndex = -1;
+    		for(int i=0; i < activeJobs.size(); i++){
+    			if (activeJobs.get(i).getId() == event.getId()){
+    				releasedJob = activeJobs.get(i);
+    				releasedJobIndex = i;
+    			}
+    		}
+    		if(releasedJob == null){
+    			System.out.println("Trying to remove a job not present in the activeJobs list");
+    			System.exit(0);
+    		}
+    		else{
+    			activeJobs.remove(releasedJobIndex);
+    			availableResources.release(releasedJob.getNumCPUs(), releasedJob.getMemoryInMbs());
+    			tryToProcessNewJob();
+    		}
+    			
+    	}
+    };
     
     Handler<CyclonSample> handleCyclonSample = new Handler<CyclonSample>() {
         @Override
