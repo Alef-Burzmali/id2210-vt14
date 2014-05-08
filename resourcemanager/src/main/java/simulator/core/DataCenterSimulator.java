@@ -80,10 +80,10 @@ public final class DataCenterSimulator extends ComponentDefinition {
             identifierSpaceSize = cyclonConfiguration.getIdentifierSpaceSize();
 
             // generate periodic report
-            int snapshotPeriod = Configuration.SNAPSHOT_PERIOD;
-            SchedulePeriodicTimeout spt = new SchedulePeriodicTimeout(snapshotPeriod, snapshotPeriod);
-            spt.setTimeoutEvent(new GenerateReport(spt));
-            trigger(spt, timer);
+//            int snapshotPeriod = Configuration.SNAPSHOT_PERIOD;
+//            SchedulePeriodicTimeout spt = new SchedulePeriodicTimeout(snapshotPeriod, snapshotPeriod);
+//            spt.setTimeoutEvent(new GenerateReport(spt));
+//            trigger(spt, timer);
 
         }
     };

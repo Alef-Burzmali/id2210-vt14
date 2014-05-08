@@ -40,6 +40,7 @@ public class Snapshot {
     }
 
     public static void printInFile(String str){
+    	System.out.println("->" + str);
     	FileIO.append("->" + str + "\n", FILENAME);
     }
 

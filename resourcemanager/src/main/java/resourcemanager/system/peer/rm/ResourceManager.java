@@ -206,7 +206,7 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<CyclonSample> handleCyclonSample = new Handler<CyclonSample>() {
         @Override
         public void handle(CyclonSample event) {
-            System.out.println("Received samples: " + event.getSample().size());
+//            System.out.println("Received samples: " + event.getSample().size());
             
             // receive a new list of neighbours
             neighbours.clear();
@@ -400,24 +400,29 @@ public final class ResourceManager extends ComponentDefinition {
     }
     
     private ArrayList<Address> pickAtRandom(){
-    	ArrayList<Integer> intList = new ArrayList<Integer>(neighbours.size());
-    	for(int i = 0; i < neighbours.size(); i++){
+    	ArrayList<Integer> intList = new ArrayList<Integer>(neighbours.size() + 1);
+    	for(int i = 0; i < neighbours.size() + 1; i++){
     		intList.add(i);
     	}
     	Collections.shuffle(intList);
     	
     	// If the number of nodes is < to the fixed number of probes use less probes
     	int nbProbes = 0;
-    	if (neighbours.size() >= NBPROBES){
+    	if (neighbours.size() + 1 >= NBPROBES){
     		nbProbes = NBPROBES;
     	}
     	else{
-    		nbProbes = neighbours.size();
+    		nbProbes = neighbours.size() + 1;
     	}
     	
     	ArrayList<Address> randomList = new ArrayList<Address>(nbProbes);
     	for(int i = 0; i < nbProbes; i++){
-    		randomList.add(neighbours.get(intList.get(i)));
+    		if (intList.get(i) == neighbours.size()){
+    			randomList.add(self);
+    		}
+    		else{
+    			randomList.add(neighbours.get(intList.get(i)));
+    		}
     	}
     	return randomList;
     }
