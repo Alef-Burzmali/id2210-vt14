@@ -58,6 +58,12 @@ public final class ResourceManager extends ComponentDefinition {
             }
         }
     };
+    /*
+     * final int | number of probes
+     * hashmap | key: id, value: event
+     * hashmap | key: id, value: [probes]
+     * FIFO linked list | job queued
+     */
 
 	
     public ResourceManager() {
@@ -69,6 +75,11 @@ public final class ResourceManager extends ComponentDefinition {
         subscribe(handleResourceAllocationRequest, networkPort);
         subscribe(handleResourceAllocationResponse, networkPort);
         subscribe(handleTManSample, tmanPort);
+        /*
+         * handle probe request
+         * handle probe response
+         * handle ressource release request (timeout)
+         */
     }
 	
     Handler<RmInit> handleInit = new Handler<RmInit>() {
@@ -110,14 +121,38 @@ public final class ResourceManager extends ComponentDefinition {
         @Override
         public void handle(RequestResources.Request event) {
             // TODO 
+        	/*
+        	 * Receiving this means that this RM was the least loaded of the RMs probed
+        	 * We add the event to the FIFO queue
+        	 * If there is enough available resources for the first job of the queue: 
+        	 * 		pop the first job of the queue and add it to the activeJobs set
+        	 * 		update available resources
+        	 * 		send a ResourceAllocationResponse event
+        	 */
         }
     };
     Handler<RequestResources.Response> handleResourceAllocationResponse = new Handler<RequestResources.Response>() {
         @Override
         public void handle(RequestResources.Response event) {
             // TODO 
+        	/*
+        	 * Receiving this means we have been allocated resources for a job
+        	 * We start a timeout for this job containing the id and the worker
+        	 */
         }
     };
+    
+    /*
+     * handler resourceRelease
+     * 		remove the job from the activeJobs set
+     * 		update available resources
+     * 		loop
+     * 			If there is enough available resources for the first job of the queue: 
+     * 				pop the first job of the queue and add it to the activeJobs set
+     * 				update available resources
+   	 * 				send a ResourceAllocationResponse event
+     */
+    
     Handler<CyclonSample> handleCyclonSample = new Handler<CyclonSample>() {
         @Override
         public void handle(CyclonSample event) {
@@ -135,13 +170,33 @@ public final class ResourceManager extends ComponentDefinition {
         public void handle(RequestResource event) {
             
             System.out.println("Allocate resources: " + event.getNumCpus() + " + " + event.getMemoryInMbs());
-            // TODO: Ask for resources from neighbours
-            // by sending a ResourceRequest
-//            RequestResources.Request req = new RequestResources.Request(self, dest,
-//            event.getNumCpus(), event.getAmountMem());
-//            trigger(req, networkPort);
+            // TODO: 
+            /*
+             * We pick a fixed number of neighbours at random
+             * We send each one a probe (with the id of the job) to check their loads
+             */
         }
     };
+    
+    /*
+     * handler probeRequest
+     * 		send back a probeResponse containing the id of the job and the number of jobs in the queue
+     */
+    
+    /*
+     * handler probeResponse
+     * 		add the probe into the hashmap
+     * 		if we received a fixed number of probes
+     * 			pick the least loaded worker
+     * 			retreive the job in the jobs hashtable
+     * 			send a resourceAllocationRequest to this worker 
+     */
+    
+    /*
+     * handler jobTimeout
+     * 		send a resourceRelease to the worker with the id of the job
+     */
+    
     Handler<TManSample> handleTManSample = new Handler<TManSample>() {
         @Override
         public void handle(TManSample event) {
