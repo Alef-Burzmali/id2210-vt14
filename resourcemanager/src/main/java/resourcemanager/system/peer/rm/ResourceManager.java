@@ -94,6 +94,7 @@ public final class ResourceManager extends ComponentDefinition {
         subscribe(handleTManSample, tmanPort);
         subscribe(handleProbeRequest, networkPort);
         subscribe(handleProbeResponse, networkPort);
+        subscribe(handleJobProcessingTimeout, timerPort);
         /*
          * handle probe request
          * handle probe response
@@ -256,6 +257,14 @@ public final class ResourceManager extends ComponentDefinition {
      * handler jobTimeout
      * 		send a resourceRelease to the worker with the id of the job
      */
+    
+    Handler<JobProcessingTimeout> handleJobProcessingTimeout = new Handler<JobProcessingTimeout>(){
+    	@Override
+    	public void handle(JobProcessingTimeout event){
+    		RequestResources.Release rel = new RequestResources.Release(self, event.getWorker(), event.getId());
+    		trigger(rel, networkPort);
+    	}
+    };
     
     Handler<TManSample> handleTManSample = new Handler<TManSample>() {
         @Override
