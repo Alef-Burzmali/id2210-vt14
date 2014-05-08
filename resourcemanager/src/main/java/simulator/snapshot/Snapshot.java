@@ -39,6 +39,9 @@ public class Snapshot {
         peerInfo.setNeighbours(partners);
     }
 
+    public static void printInFile(String str){
+    	FileIO.append("->" + str + "\n", FILENAME);
+    }
 
     public static void report() {
         String str = new String();

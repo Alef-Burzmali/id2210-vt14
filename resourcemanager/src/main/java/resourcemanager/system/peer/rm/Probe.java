@@ -18,10 +18,16 @@ public class Probe {
 	 */
 	public static class Request extends Message{
 		private final long id;
+		private final int nbProbes;
 		
-		public Request(Address source, Address destination, long id){
+		public Request(Address source, Address destination, long id, int nbProbes){
 			super(source, destination);
 			this.id = id;
+			this.nbProbes = nbProbes;
+		}
+		
+		public int getNbProbes() {
+			return nbProbes;
 		}
 		
 		public long getId(){
@@ -37,13 +43,19 @@ public class Probe {
 	public static class Response extends Message{
 		private final long id;
 		private final int nbPendingJobs;
+		private final int nbProbes;
 		
-		public Response(Address source, Address destination, long id, int nbPendingJobs){
+		public Response(Address source, Address destination, long id, int nbPendingJobs, int nbProbes){
 			super(source, destination);
 			this.id = id;
 			this.nbPendingJobs = nbPendingJobs;
+			this.nbProbes = nbProbes;
 		}
 		
+		public int getNbProbes() {
+			return nbProbes;
+		}
+
 		public long getId(){
 			return id;
 		}
