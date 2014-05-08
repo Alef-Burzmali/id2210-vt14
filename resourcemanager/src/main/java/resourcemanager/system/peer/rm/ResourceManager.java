@@ -71,7 +71,7 @@ public final class ResourceManager extends ComponentDefinition {
     private static final int NBPROBES = 4;
     
     // Jobs managed by the RM, waiting for probes to pick the best worker, indexed by the job ID
-    private HashMap<Long, RequestResource> managedJobs = new HashMap<Long, RequestResource>();
+    private HashMap<Long, ManagedJob> managedJobs = new HashMap<Long, ManagedJob>();
     
     // A hashmap storing probes infos associated with a managed job, indexed by the job id
     private HashMap<Long, LinkedList<ProbeInfos>> outstandingProbes = new HashMap<Long, LinkedList<ProbeInfos>>();
@@ -92,6 +92,7 @@ public final class ResourceManager extends ComponentDefinition {
         subscribe(handleResourceAllocationResponse, networkPort);
         subscribe(handleTManSample, tmanPort);
         subscribe(handleProbeRequest, networkPort);
+        subscribe(handleProbeResponse, networkPort);
         /*
          * handle probe request
          * handle probe response
@@ -192,13 +193,9 @@ public final class ResourceManager extends ComponentDefinition {
              * We pick a fixed number of neighbours at random
              * We send each one a probe (with the id of the job) to check their loads
              */
-            
-            // We add an entry to the hashmap of outstanding probes with the corresponding id and an empty list
             outstandingProbes.put(event.getId(), new LinkedList<ProbeInfos>());
-            // We pick a fixed number of random workers
+            managedJobs.put(event.getId(), new ManagedJob(event.getId(), event.getNumCpus(), event.getMemoryInMbs(), event.getTimeToHoldResource()));
             ArrayList<Address> randomList = pickAtRandom();
-            
-            // We send each of them a probe
             for(int i = 0; i < NBPROBES; i++){
             	Probe.Request probe = new Probe.Request(self, randomList.get(i), event.getId());
             	trigger(probe, networkPort);
@@ -228,6 +225,20 @@ public final class ResourceManager extends ComponentDefinition {
      * 			retreive the job in the jobs hashtable
      * 			send a resourceAllocationRequest to this worker 
      */
+    Handler<Probe.Response> handleProbeResponse = new Handler<Probe.Response>(){
+    	@Override
+    	public void handle(Probe.Response event) {
+    		ProbeInfos probeInfos = new ProbeInfos(event.getSource(), event.getNbPendingJobs());
+    		outstandingProbes.get(event.getId()).add(probeInfos);
+    		if (outstandingProbes.get(event.getId()).size() == NBPROBES){
+    			Address bestWorker = pickBestWorker(outstandingProbes.get(event.getId()));
+    			ManagedJob managedJob = managedJobs.get(event.getId());
+    			RequestResources.Request req = new RequestResources.Request(self, bestWorker, managedJob.getNumCPUs(), managedJob.getMemoryInMbs(), managedJob.getId());
+    			trigger(req, networkPort);
+    		}
+    	}
+    };
+    
     
     /*
      * handler jobTimeout
@@ -288,8 +299,23 @@ public final class ResourceManager extends ComponentDefinition {
 			return numCPUs;
 		}
 
-		public int getAmountMemInMb() {
+		public int getMemoryInMbs() {
 			return amountMemInMb;
+		}
+    	
+    	
+    }
+    
+    private class ManagedJob extends Job{
+    	private final int timeToHoldResource;
+    	
+    	public ManagedJob(long id, int numCPUs, int amountMemInMb, int timeToHoldResource){
+    		super(id, numCPUs, amountMemInMb);
+    		this.timeToHoldResource = timeToHoldResource;
+    	}
+
+		public int getTimeToHoldResource() {
+			return timeToHoldResource;
 		}
     	
     	
@@ -306,5 +332,19 @@ public final class ResourceManager extends ComponentDefinition {
     		randomList.add(neighbours.get(intList.get(i)));
     	}
     	return randomList;
+    }
+    
+    private Address pickBestWorker(LinkedList<ProbeInfos> probeInfosList){
+    	int indexMin = 0;
+    	int min = Integer.MAX_VALUE;
+    	
+    	for (int i = 0; i < probeInfosList.size(); i++){
+    		if(probeInfosList.get(i).getNbPendingJobs() < min){
+    			indexMin = i;
+    			min = probeInfosList.get(i).getNbPendingJobs();
+    		}
+    	}
+    	
+    	return probeInfosList.get(indexMin).getWorker();
     }
 }

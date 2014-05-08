@@ -27,7 +27,7 @@ public class RequestResources  {
             this.id = id;
         }
 
-        public int getAmountMemInMb() {
+        public int getMemoryInMbs() {
             return amountMemInMb;
         }
 
