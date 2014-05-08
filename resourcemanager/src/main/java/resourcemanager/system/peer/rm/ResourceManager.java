@@ -19,6 +19,7 @@ import se.sics.kompics.Positive;
 import se.sics.kompics.address.Address;
 import se.sics.kompics.network.Network;
 import se.sics.kompics.timer.SchedulePeriodicTimeout;
+import se.sics.kompics.timer.ScheduleTimeout;
 import se.sics.kompics.timer.Timer;
 import se.sics.kompics.web.Web;
 import system.peer.RmPort;
@@ -142,11 +143,15 @@ public final class ResourceManager extends ComponentDefinition {
         	/*
         	 * Receiving this means that this RM was the least loaded of the RMs probed
         	 * We add the event to the FIFO queue
-        	 * If there is enough available resources for the first job of the queue: 
-        	 * 		pop the first job of the queue and add it to the activeJobs set
-        	 * 		update available resources
-        	 * 		send a ResourceAllocationResponse event
+        	 * Loop
+        	 *	 	If there is enough available resources for the first job of the queue: 
+        	 * 			pop the first job of the queue and add it to the activeJobs set
+        	 * 			update available resources
+        	 * 			send a ResourceAllocationResponse event
         	 */
+        	Job job = new Job(event.getId(), event.getNumCpus(), event.getMemoryInMbs(), event.getSource());
+        	pendingJobs.add(job);
+        	tryToProcessNewJob();
         }
     };
     Handler<RequestResources.Response> handleResourceAllocationResponse = new Handler<RequestResources.Response>() {
@@ -157,6 +162,10 @@ public final class ResourceManager extends ComponentDefinition {
         	 * Receiving this means we have been allocated resources for a job
         	 * We start a timeout for this job containing the id and the worker
         	 */
+        	int processingTime = managedJobs.get(event.getId()).getTimeToHoldResource();
+        	ScheduleTimeout jobProcessingTimeout = new ScheduleTimeout(processingTime);
+        	jobProcessingTimeout.setTimeoutEvent(new JobProcessingTimeout(jobProcessingTimeout, event.getId(), event.getSource()));
+        	trigger(jobProcessingTimeout, timerPort);
         }
     };
     
@@ -194,7 +203,7 @@ public final class ResourceManager extends ComponentDefinition {
              * We send each one a probe (with the id of the job) to check their loads
              */
             outstandingProbes.put(event.getId(), new LinkedList<ProbeInfos>());
-            managedJobs.put(event.getId(), new ManagedJob(event.getId(), event.getNumCpus(), event.getMemoryInMbs(), event.getTimeToHoldResource()));
+            managedJobs.put(event.getId(), new ManagedJob(event.getId(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource()));
             ArrayList<Address> randomList = pickAtRandom();
             for(int i = 0; i < NBPROBES; i++){
             	Probe.Request probe = new Probe.Request(self, randomList.get(i), event.getId());
@@ -235,6 +244,9 @@ public final class ResourceManager extends ComponentDefinition {
     			ManagedJob managedJob = managedJobs.get(event.getId());
     			RequestResources.Request req = new RequestResources.Request(self, bestWorker, managedJob.getNumCPUs(), managedJob.getMemoryInMbs(), managedJob.getId());
     			trigger(req, networkPort);
+    			
+    			// We can remove the job from the outstandingProbes list
+    			outstandingProbes.remove(event.getId());
     		}
     	}
     };
@@ -251,6 +263,27 @@ public final class ResourceManager extends ComponentDefinition {
             // TODO: 
         }
     };
+    
+    /*
+     * loop
+     *		If there is enough available resources for the first job of the queue: 
+     * 			pop the first job of the queue and add it to the activeJobs set
+     * 			update available resources
+  	 * 			send a ResourceAllocationResponse event
+     */
+    
+    public void tryToProcessNewJob(){
+    	Job firstJob = pendingJobs.getFirst();
+    	if (availableResources.getNumFreeCpus() >= firstJob.getNumCPUs() && availableResources.getFreeMemInMbs() >= firstJob.getMemoryInMbs()){
+    		availableResources.allocate(firstJob.getNumCPUs(), firstJob.getMemoryInMbs());
+    		pendingJobs.removeFirst();
+    		activeJobs.add(firstJob);
+    		RequestResources.Response res = new RequestResources.Response(self, firstJob.getInitiator(), true, firstJob.getId());
+    		trigger(res, networkPort);
+    		System.out.println("Job no " + firstJob.getId() + " from RM " + firstJob.getInitiator() + "is being processed");
+    		tryToProcessNewJob();
+    	}
+    }
     
     /*
      * When receiving a Probe.Response message, its informations are store in a ProbeInfos instance
@@ -281,15 +314,21 @@ public final class ResourceManager extends ComponentDefinition {
      * Upon reception of the appropriate RequestResources.Release message, it is removed from the activeJobs set 
      */
     private class Job{
+    	private final Address initiator;
     	private final long id;
     	private final int numCPUs;
     	private final int amountMemInMb;
     	
-    	public Job(long id, int numCPUs, int amountMemInMb){
+    	public Job(long id, int numCPUs, int amountMemInMb, Address initiator){
     		this.id = id;
     		this.numCPUs = numCPUs;
     		this.amountMemInMb = amountMemInMb;
+    		this.initiator = initiator;
     	}
+
+		public Address getInitiator() {
+			return initiator;
+		}
 
 		public long getId() {
 			return id;
@@ -309,8 +348,8 @@ public final class ResourceManager extends ComponentDefinition {
     private class ManagedJob extends Job{
     	private final int timeToHoldResource;
     	
-    	public ManagedJob(long id, int numCPUs, int amountMemInMb, int timeToHoldResource){
-    		super(id, numCPUs, amountMemInMb);
+    	public ManagedJob(long id, int numCPUs, int amountMemInMb, Address initiator, int timeToHoldResource){
+    		super(id, numCPUs, amountMemInMb, initiator);
     		this.timeToHoldResource = timeToHoldResource;
     	}
 
