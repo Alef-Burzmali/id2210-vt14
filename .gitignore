@@ -6,3 +6,5 @@ release.properties
 .classpath
 .project
 .settings
+resourcemanager/search.out
+resourcemanager/.TODO.md.html

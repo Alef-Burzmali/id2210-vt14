@@ -1,18 +1,12 @@
 package resourcemanager.system.peer.rm;
 
-import common.configuration.RmConfiguration;
-import common.peer.AvailableResources;
-import common.simulation.RequestResource;
-import cyclon.system.peer.cyclon.CyclonSample;
-import cyclon.system.peer.cyclon.CyclonSamplePort;
-import cyclon.system.peer.cyclon.PeerDescriptor;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.LinkedList;
 import java.util.Random;
+import java.util.Set;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +22,12 @@ import se.sics.kompics.web.Web;
 import system.peer.RmPort;
 import tman.system.peer.tman.TManSample;
 import tman.system.peer.tman.TManSamplePort;
+import common.configuration.RmConfiguration;
+import common.peer.AvailableResources;
+import common.simulation.RequestResource;
+import cyclon.system.peer.cyclon.CyclonSample;
+import cyclon.system.peer.cyclon.CyclonSamplePort;
+import cyclon.system.peer.cyclon.PeerDescriptor;
 
 /**
  * Should have some comments here.
@@ -64,7 +64,21 @@ public final class ResourceManager extends ComponentDefinition {
      * hashmap | key: id, value: [probes]
      * FIFO linked list | job queued
      */
-
+    
+    // Number of probes sent to random workers
+    private static final int NBPROBES = 4;
+    
+    // Jobs managed by the RM, waiting for probes to pick the best worker, indexed by the job ID
+    private HashMap<Long, RequestResource> managedJobs = new HashMap<Long, RequestResource>();
+    
+    // A hashmap storing probes infos associated with a managed job, indexed by the job id
+    private HashMap<Long, LinkedList<ProbeInfos>> outstandingProbes = new HashMap<Long, LinkedList<ProbeInfos>>();
+    
+    // FIFO list of jobs to be processed by the worker
+    private LinkedList<Job> pendingJobs;
+    
+    // Set of jobs currently processed by the worker
+    private Set<Job> activeJobs;
 	
     public ResourceManager() {
 
@@ -203,5 +217,59 @@ public final class ResourceManager extends ComponentDefinition {
             // TODO: 
         }
     };
+    
+    /*
+     * When receiving a Probe.Response message, its informations are store in a ProbeInfos instance
+     * Then, this instance is added to the outstandingProbes hashmap for the right id
+     */
+    private class ProbeInfos{
+    	private final Address worker;
+    	private final int nbPendingJobs;
+    	
+    	public ProbeInfos(Address worker, int nbPendingJobs){
+    		this.worker = worker;
+    		this.nbPendingJobs = nbPendingJobs;
+    	}
+    	
+    	public Address getWorker(){
+    		return worker;
+    	}
+    	
+    	public int getNbPendingJobs(){
+    		return nbPendingJobs;
+    	}
+    }
+    
+    /*
+     * When receiving a RequestResources.Request message, its informations are stored in a Job instance
+     * Then, this instance is added to the pendingJobs linked list until resources are available
+     * When resources are available, this instance is popped from the linked list and added to the activeJobs set
+     * Upon reception of the appropriate RequestResources.Release message, it is removed from the activeJobs set 
+     */
+    private class Job{
+    	private final long id;
+    	private final int numCPUs;
+    	private final int amountMemInMb;
+    	
+    	public Job(long id, int numCPUs, int amountMemInMb){
+    		this.id = id;
+    		this.numCPUs = numCPUs;
+    		this.amountMemInMb = amountMemInMb;
+    	}
+
+		public long getId() {
+			return id;
+		}
+
+		public int getNumCPUs() {
+			return numCPUs;
+		}
+
+		public int getAmountMemInMb() {
+			return amountMemInMb;
+		}
+    	
+    	
+    }
 
 }
