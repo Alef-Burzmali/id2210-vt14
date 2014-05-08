@@ -1,6 +1,8 @@
 package resourcemanager.system.peer.rm;
 
+import java.awt.List;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -89,6 +91,7 @@ public final class ResourceManager extends ComponentDefinition {
         subscribe(handleResourceAllocationRequest, networkPort);
         subscribe(handleResourceAllocationResponse, networkPort);
         subscribe(handleTManSample, tmanPort);
+        subscribe(handleProbeRequest, networkPort);
         /*
          * handle probe request
          * handle probe response
@@ -189,6 +192,18 @@ public final class ResourceManager extends ComponentDefinition {
              * We pick a fixed number of neighbours at random
              * We send each one a probe (with the id of the job) to check their loads
              */
+            
+            // We add an entry to the hashmap of outstanding probes with the corresponding id and an empty list
+            outstandingProbes.put(event.getId(), new LinkedList<ProbeInfos>());
+            // We pick a fixed number of random workers
+            ArrayList<Address> randomList = pickAtRandom();
+            
+            // We send each of them a probe
+            for(int i = 0; i < NBPROBES; i++){
+            	Probe.Request probe = new Probe.Request(self, randomList.get(i), event.getId());
+            	trigger(probe, networkPort);
+            }
+            
         }
     };
     
@@ -196,6 +211,14 @@ public final class ResourceManager extends ComponentDefinition {
      * handler probeRequest
      * 		send back a probeResponse containing the id of the job and the number of jobs in the queue
      */
+    Handler<Probe.Request> handleProbeRequest = new Handler<Probe.Request>(){
+    	@Override
+    	public void handle(Probe.Request event) {
+    		int nbPendingJobs = activeJobs.size() + pendingJobs.size();
+    		Probe.Response res = new Probe.Response(event.getSource(), event.getDestination(), event.getId(), nbPendingJobs);
+    		trigger(res, networkPort);
+    	}
+    };
     
     /*
      * handler probeResponse
@@ -271,5 +294,17 @@ public final class ResourceManager extends ComponentDefinition {
     	
     	
     }
-
+    
+    private ArrayList<Address> pickAtRandom(){
+    	ArrayList<Integer> intList = new ArrayList<Integer>(neighbours.size());
+    	for(int i = 0; i < neighbours.size(); i++){
+    		intList.add(i);
+    	}
+    	Collections.shuffle(intList);
+    	ArrayList<Address> randomList = new ArrayList<Address>(NBPROBES);
+    	for(int i = 0; i < NBPROBES; i++){
+    		randomList.add(neighbours.get(intList.get(i)));
+    	}
+    	return randomList;
+    }
 }
