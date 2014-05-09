@@ -18,6 +18,7 @@ import se.sics.kompics.address.Address;
 import se.sics.kompics.network.Network;
 import se.sics.kompics.timer.SchedulePeriodicTimeout;
 import se.sics.kompics.timer.ScheduleTimeout;
+import se.sics.kompics.timer.Timeout;
 import se.sics.kompics.timer.Timer;
 import se.sics.kompics.web.Web;
 import simulator.snapshot.Snapshot;
@@ -95,6 +96,7 @@ public final class ResourceManager extends ComponentDefinition {
         subscribe(handleProbeRequest, networkPort);
         subscribe(handleProbeResponse, networkPort);
         subscribe(handleJobProcessingTimeout, timerPort);
+//        subscribe(handleMyTimeout, timerPort);
     }
 	
     Handler<RmInit> handleInit = new Handler<RmInit>() {
@@ -161,11 +163,22 @@ public final class ResourceManager extends ComponentDefinition {
         	 * We start a timeout for this job containing the id and the worker
         	 */
         	int processingTime = managedJobs.get(event.getId()).getTimeToHoldResource();
+        	System.out.println(processingTime);
         	ScheduleTimeout jobProcessingTimeout = new ScheduleTimeout(processingTime);
         	jobProcessingTimeout.setTimeoutEvent(new JobProcessingTimeout(jobProcessingTimeout, event.getId(), event.getSource()));
         	trigger(jobProcessingTimeout, timerPort);
+//        	ScheduleTimeout testTimeout = new ScheduleTimeout(1500);
+//        	testTimeout.setTimeoutEvent(new MyTimeout(testTimeout));
+//        	trigger(testTimeout, timerPort);
         }
     };
+    
+//    Handler<MyTimeout> handleMyTimeout = new Handler<MyTimeout>(){
+//    	@Override
+//    	public void handle(MyTimeout event){
+//    		System.out.println("Timeout");
+//    	}
+//    };
     
     /*
      * handler resourceRelease
@@ -196,7 +209,7 @@ public final class ResourceManager extends ComponentDefinition {
     		else{
     			activeJobs.remove(releasedJobIndex);
     			availableResources.release(releasedJob.getNumCPUs(), releasedJob.getMemoryInMbs());
-    			Snapshot.printInFile("Job no " + releasedJob.getId() + " from RM " + releasedJob.getInitiator() + "has finished processing");
+    			Snapshot.printInFile("Job no " + releasedJob.getId() + " from RM " + releasedJob.getInitiator() + " has finished processing @ time " + System.currentTimeMillis() / 1000L);
     			tryToProcessNewJob();
     		}
     			
@@ -219,7 +232,7 @@ public final class ResourceManager extends ComponentDefinition {
         @Override
         public void handle(RequestResource event) {
             
-            System.out.println("Allocate resources: " + event.getNumCpus() + " + " + event.getMemoryInMbs());
+//            System.out.println("Allocate resources: " + event.getNumCpus() + " + " + event.getMemoryInMbs());
             // TODO: 
             /*
              * We pick a fixed number of neighbours at random
@@ -227,6 +240,7 @@ public final class ResourceManager extends ComponentDefinition {
              */
             outstandingProbes.put(event.getId(), new LinkedList<ProbeInfos>());
             managedJobs.put(event.getId(), new ManagedJob(event.getId(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource()));
+            Snapshot.printInFile("Job no " + event.getId() + " from RM " + self + " has requested resources @ time " + System.currentTimeMillis() / 1000L);
             ArrayList<Address> randomList = pickAtRandom();
             for(int i = 0; i < randomList.size(); i++){
             	Probe.Request probe = new Probe.Request(self, randomList.get(i), event.getId(), randomList.size());
@@ -312,7 +326,6 @@ public final class ResourceManager extends ComponentDefinition {
 	    		activeJobs.add(firstJob);
 	    		RequestResources.Response res = new RequestResources.Response(self, firstJob.getInitiator(), true, firstJob.getId());
 	    		trigger(res, networkPort);
-	    		Snapshot.printInFile("Job no " + firstJob.getId() + " from RM " + firstJob.getInitiator() + "is being processed");
 	    		tryToProcessNewJob();
 	    	}
     	}
