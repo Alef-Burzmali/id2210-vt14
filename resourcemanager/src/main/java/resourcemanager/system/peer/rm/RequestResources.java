@@ -19,12 +19,14 @@ public class RequestResources  {
         private final int numCpus;
         private final int amountMemInMb;
         private final long id;
+        private final long idBatch;
 
-        public Request(Address source, Address destination, int numCpus, int amountMemInMb, long id) {
+        public Request(Address source, Address destination, int numCpus, int amountMemInMb, long id, long idBatch) {
             super(source, destination);
             this.numCpus = numCpus;
             this.amountMemInMb = amountMemInMb;
             this.id = id;
+            this.idBatch = idBatch;
         }
 
         public int getMemoryInMbs() {
@@ -38,6 +40,10 @@ public class RequestResources  {
         public long getId(){
 			return id;
 		}
+        
+        public long getIdBatch() {
+			return idBatch;
+		}
 
     }
     
@@ -48,14 +54,20 @@ public class RequestResources  {
     	 */
         private final boolean success;
         private final long id;
-        public Response(Address source, Address destination, boolean success, long id) {
+        private final long idBatch;
+        public Response(Address source, Address destination, boolean success, long id, long idBatch) {
             super(source, destination);
             this.success = success;
             this.id = id;
+            this.idBatch = idBatch;
         }
         
         public long getId(){
 			return id;
+		}
+        
+        public long getIdBatch() {
+			return idBatch;
 		}
     }
     
@@ -71,8 +83,8 @@ public class RequestResources  {
             super(source, destination);
             this.id = id;
         }
-    	
-    	public long getId(){
+
+		public long getId(){
 			return id;
 		}
     }

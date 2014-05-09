@@ -40,8 +40,8 @@ public class Snapshot {
     }
 
     public static void printInFile(String str){
-    	System.out.println("->" + str);
-    	FileIO.append("->" + str + "\n", FILENAME);
+    	System.out.println(str);
+    	FileIO.append(str + ",", FILENAME);
     }
 
     public static void report() {

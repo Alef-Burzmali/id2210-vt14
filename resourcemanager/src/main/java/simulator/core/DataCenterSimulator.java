@@ -1,6 +1,7 @@
 package simulator.core;
 
 import common.simulation.SimulatorPort;
+
 import java.util.HashMap;
 
 import se.sics.kompics.ChannelFilter;
@@ -16,7 +17,6 @@ import se.sics.kompics.network.Network;
 import se.sics.kompics.p2p.bootstrap.BootstrapConfiguration;
 import se.sics.kompics.timer.SchedulePeriodicTimeout;
 import se.sics.kompics.timer.Timer;
-
 import system.peer.Peer;
 import system.peer.PeerInit;
 import simulator.snapshot.Snapshot;
@@ -29,10 +29,13 @@ import common.simulation.ConsistentHashtable;
 import common.simulation.GenerateReport;
 import common.simulation.PeerFail;
 import common.simulation.PeerJoin;
+import common.simulation.RequestBatchResource;
 import common.simulation.RequestResource;
 import common.simulation.SimulatorInit;
+
 import java.net.InetAddress;
 import java.util.Random;
+
 import se.sics.ipasdistances.AsIpGenerator;
 import system.peer.RmPort;
 import se.sics.kompics.p2p.experiment.dsl.events.TerminateExperiment;
@@ -65,6 +68,7 @@ public final class DataCenterSimulator extends ComponentDefinition {
         subscribe(handlePeerFail, simulator);
         subscribe(handleTerminateExperiment, simulator);
         subscribe(handleRequestResource, simulator);
+        subscribe(handleRequestBatchResource, simulator);
     }
 	
     Handler<SimulatorInit> handleInit = new Handler<SimulatorInit>() {
@@ -91,6 +95,15 @@ public final class DataCenterSimulator extends ComponentDefinition {
     Handler<RequestResource> handleRequestResource = new Handler<RequestResource>() {
         @Override
         public void handle(RequestResource event) {
+            Long successor = ringNodes.getNode(event.getId());
+            Component peer = peers.get(successor);
+            trigger( event, peer.getNegative(RmPort.class));
+        }
+    };
+    
+    Handler<RequestBatchResource> handleRequestBatchResource = new Handler<RequestBatchResource>() {
+        @Override
+        public void handle(RequestBatchResource event) {
             Long successor = ringNodes.getNode(event.getId());
             Component peer = peers.get(successor);
             trigger( event, peer.getNegative(RmPort.class));
