@@ -166,6 +166,7 @@ public final class ResourceManager extends ComponentDefinition {
         	 */
         	Job job = new Job(event.getId(), event.getIdBatch(), event.getNumCpus(), event.getMemoryInMbs(), event.getSource());
         	pendingJobs.add(job);
+//        	System.out.println(self + " : " + pendingJobs.size());
         	tryToProcessNewJob();
         }
     };
@@ -377,6 +378,7 @@ public final class ResourceManager extends ComponentDefinition {
 	    	if (availableResources.getNumFreeCpus() >= firstJob.getNumCPUs() && availableResources.getFreeMemInMbs() >= firstJob.getMemoryInMbs()){
 	    		availableResources.allocate(firstJob.getNumCPUs(), firstJob.getMemoryInMbs());
 	    		pendingJobs.removeFirst();
+//	    		System.out.println(self + " : " + pendingJobs.size());
 	    		activeJobs.add(firstJob);
 	    		RequestResources.Response res = new RequestResources.Response(self, firstJob.getInitiator(), true, firstJob.getId(), firstJob.getIdBatch());
 	    		trigger(res, networkPort);

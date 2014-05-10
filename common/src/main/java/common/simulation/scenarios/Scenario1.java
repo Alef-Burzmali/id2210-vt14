@@ -7,19 +7,19 @@ public class Scenario1 extends Scenario {
 	private static SimulationScenario scenario = new SimulationScenario() {{
                 
 		StochasticProcess process0 = new StochasticProcess() {{
-			eventInterArrivalTime(constant(10));
-			raise(100, Operations.peerJoin(), 
+			eventInterArrivalTime(constant(1000));
+			raise(10, Operations.peerJoin(), 
                                 uniform(0, Integer.MAX_VALUE), 
                                 constant(8), constant(12000)
                              );
 		}};
                 
 		StochasticProcess process1h = new StochasticProcess() {{
-			eventInterArrivalTime(uniform(100, 1000));
-			raise(5000, Operations.requestResources(), 
+			eventInterArrivalTime(constant(1000));
+			raise(500, Operations.requestResources(), 
                                 uniform(0, Integer.MAX_VALUE),
-                                uniform(1,2), uniform(1000,4000),
-                                constant(1000*5000) 
+                                constant(2), constant(2000),
+                                constant(1000*1000*1) 
                                 );
 		}};
 		
@@ -58,7 +58,7 @@ public class Scenario1 extends Scenario {
 		process1h.startAfterTerminationOf(5000, process0);
 //		process1l.startAfterTerminationOf(1000*1000*10, process1h);
 //		process2.startAfterTerminationOf(50000, process0);
-        terminateProcess.startAfterTerminationOf(1000*1000*100, process1l);
+        terminateProcess.startAfterTerminationOf(1000*1000*100, process1h);
 	}};
 
 	// -------------------------------------------------------------------
