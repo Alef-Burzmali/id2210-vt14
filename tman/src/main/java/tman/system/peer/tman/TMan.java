@@ -116,12 +116,24 @@ public final class TMan extends ComponentDefinition {
         }
     };
 
+    /**
+     * Add a sample from Cyclon into our view.
+     * Cyclon is not aware of resources and uses a different descriptor as us.
+     * We cannot add its peers directly, we will need to start a TMan peer-exchange
+     * with them to get their Descriptor.
+     */
     Handler<CyclonSample> handleCyclonSample = new Handler<CyclonSample>() {
         @Override
         public void handle(CyclonSample event) {
             List<Address> cyclonPartners = event.getSample();
 
             // merge cyclonPartners into TManPartners
+            UUID requestId = UUID.randomUUID();
+            DescriptorBuffer buffer = prepareBuffer(null);
+            for (Address peer : cyclonPartners) {
+                ExchangeMsg.Request request = new ExchangeMsg.Request(requestId, buffer, self, peer);
+                trigger(request, networkPort);
+            }
         }
     };
 
@@ -164,7 +176,9 @@ public final class TMan extends ComponentDefinition {
         ArrayList<PeerDescriptor> buffer = new ArrayList<PeerDescriptor>(tmanPartners);
         buffer.add(selfDescriptor);
         
-        //@TODO sort buffer with rank function
+        if (peer != null) {
+            rank(peer, buffer);
+        }
         return new DescriptorBuffer(selfDescriptor, buffer.subList(0, 10));
     }
     
@@ -207,6 +221,15 @@ public final class TMan extends ComponentDefinition {
             }
         }
         tmanPartners = set;
+    }
+    
+    /**
+     * Inplace ranking function.
+     * @param base      Peer at the "center" of our ranking.
+     * @param peers     Peers to rank.
+     * @TODO Implement it
+     */
+    private void rank(PeerDescriptor base, List<PeerDescriptor> peers) {
     }
 
     // TODO - if you call this method with a list of entries, it will
