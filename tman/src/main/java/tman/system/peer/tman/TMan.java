@@ -9,6 +9,7 @@ import cyclon.system.peer.cyclon.CyclonSamplePort;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,10 +36,15 @@ public final class TMan extends ComponentDefinition {
     Positive<Timer> timerPort = positive(Timer.class);
     private long period;
     private Address self;
-    private ArrayList<Address> tmanPartners;
+    private ArrayList<PeerDescriptor> tmanPartners;
     private TManConfiguration tmanConfiguration;
     private Random r;
     private AvailableResources availableResources;
+    
+    /**
+     * Lamport clock for our own descriptor.
+     */
+    private int descriptorAge = 0;
 
     public class TManSchedule extends Timeout {
 
@@ -52,7 +58,7 @@ public final class TMan extends ComponentDefinition {
     }
 
     public TMan() {
-        tmanPartners = new ArrayList<Address>();
+        tmanPartners = new ArrayList<PeerDescriptor>();
 
         subscribe(handleInit, control);
         subscribe(handleRound, timerPort);
@@ -69,20 +75,44 @@ public final class TMan extends ComponentDefinition {
             period = tmanConfiguration.getPeriod();
             r = new Random(tmanConfiguration.getSeed());
             availableResources = init.getAvailableResources();
+            
             SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(period, period);
             rst.setTimeoutEvent(new TManSchedule(rst));
             trigger(rst, timerPort);
-
         }
     };
 
+    /**
+     * Initiate a new round of TMan.
+     * Sends our sample to the application, and initiate the active
+     * part of TMan.
+     */
     Handler<TManSchedule> handleRound = new Handler<TManSchedule>() {
         @Override
         public void handle(TManSchedule event) {
-            Snapshot.updateTManPartners(self, tmanPartners);
+            ArrayList<Address> partnerAddresses = new ArrayList<Address>();
+            for (PeerDescriptor descriptor : tmanPartners) {
+                partnerAddresses.add(descriptor.getAddress());
+            } 
+            
+            Snapshot.updateTManPartners(self, partnerAddresses);
 
             // Publish sample to connected components
-            trigger(new TManSample(tmanPartners), tmanPort);
+            trigger(new TManSample(partnerAddresses), tmanPort);
+            
+            // Active part of TMan
+            // Send a partial view to a selected peer.
+            UUID requestId = event.getTimeoutId();
+            PeerDescriptor peer = selectPeer();
+            
+            // our peer list is empty, wait until there is more.
+            if (peer == null) {
+                return;
+            }
+            
+            DescriptorBuffer buffer = prepareBuffer(peer);
+            ExchangeMsg.Request request = new ExchangeMsg.Request(requestId, buffer, self, peer.getAddress());
+            trigger(request, networkPort);
         }
     };
 
@@ -95,19 +125,89 @@ public final class TMan extends ComponentDefinition {
         }
     };
 
+    /**
+     * Merge a received buffer and send our view in response.
+     * Passive part of TMan.
+     */
     Handler<ExchangeMsg.Request> handleTManPartnersRequest = new Handler<ExchangeMsg.Request>() {
         @Override
         public void handle(ExchangeMsg.Request event) {
-
+            UUID requestId = event.getRequestId();
+            Address peer = event.getSource();
+            DescriptorBuffer buffer = prepareBuffer(peer);
+            ExchangeMsg.Response response = new ExchangeMsg.Response(requestId, buffer, self, peer);
+            trigger(response, networkPort);
+            
+            mergeBuffer(event.getRandomBuffer());
         }
     };
 
+    /**
+     * Merge the buffer received in reponse.
+     * Second half of the active part.
+     */
     Handler<ExchangeMsg.Response> handleTManPartnersResponse = new Handler<ExchangeMsg.Response>() {
         @Override
         public void handle(ExchangeMsg.Response event) {
-
+            mergeBuffer(event.getSelectedBuffer());
         }
     };
+    
+    /**
+     * Prepare a buffer of nodes to be sent to a given node.
+     * m is hardcoded to 10.
+     */
+    private DescriptorBuffer prepareBuffer(PeerDescriptor peer) {
+        descriptorAge++;
+        PeerDescriptor selfDescriptor = new PeerDescriptor(self, descriptorAge, availableResources);
+        
+        ArrayList<PeerDescriptor> buffer = new ArrayList<PeerDescriptor>(tmanPartners);
+        buffer.add(selfDescriptor);
+        
+        //@TODO sort buffer with rank function
+        return new DescriptorBuffer(selfDescriptor, buffer.subList(0, 10));
+    }
+    
+    /**
+     * Select a peer from our view to send our view.
+     * Psi is hardcoded to 5.
+     */
+    private PeerDescriptor selectPeer() {
+        int max = Math.min(tmanPartners.size(), 5);
+        
+        // list is empty
+        if (max <= 0) {
+            return null;
+        }
+        
+        int randomIndex = r.nextInt(max);
+        return tmanPartners.get(randomIndex);
+    }
+    
+    /**
+     * Merge a received buffer in our partial view.
+     */
+    private void mergeBuffer(DescriptorBuffer buffer) {
+        List<PeerDescriptor> peers = buffer.getDescriptors();
+        
+        ArrayList<PeerDescriptor> set = new ArrayList<PeerDescriptor>(tmanPartners);
+        
+        for (PeerDescriptor p : peers) {
+            int index = set.indexOf(p);
+            if (index != -1) {
+                PeerDescriptor q = set.get(index);
+                
+                // if p is newer than q, then its description of AvailableResources is
+                // newer too, so we want to keep it.
+                if (p.compareTo(q) == 1) {
+                    set.set(index, p);
+                }
+            } else {
+                set.add(p);
+            }
+        }
+        tmanPartners = set;
+    }
 
     // TODO - if you call this method with a list of entries, it will
     // return a single node, weighted towards the 'best' node (as defined by
@@ -144,5 +244,4 @@ public final class TMan extends ComponentDefinition {
         }
         return entries.get(entries.size() - 1);
     }
-
 }
