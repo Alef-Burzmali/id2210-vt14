@@ -2,7 +2,6 @@ package tman.system.peer.tman;
 
 import java.util.UUID;
 
-import cyclon.system.peer.cyclon.DescriptorBuffer;
 import se.sics.kompics.address.Address;
 import se.sics.kompics.network.Message;
 import se.sics.kompics.timer.ScheduleTimeout;
