@@ -84,10 +84,10 @@ public final class DataCenterSimulator extends ComponentDefinition {
             identifierSpaceSize = cyclonConfiguration.getIdentifierSpaceSize();
 
             // generate periodic report
-//            int snapshotPeriod = Configuration.SNAPSHOT_PERIOD;
-//            SchedulePeriodicTimeout spt = new SchedulePeriodicTimeout(snapshotPeriod, snapshotPeriod);
-//            spt.setTimeoutEvent(new GenerateReport(spt));
-//            trigger(spt, timer);
+            int snapshotPeriod = Configuration.SNAPSHOT_PERIOD;
+            SchedulePeriodicTimeout spt = new SchedulePeriodicTimeout(snapshotPeriod, snapshotPeriod);
+            spt.setTimeoutEvent(new GenerateReport(spt));
+            trigger(spt, timer);
 
         }
     };
@@ -147,7 +147,8 @@ public final class DataCenterSimulator extends ComponentDefinition {
     Handler<TerminateExperiment> handleTerminateExperiment = new Handler<TerminateExperiment>() {
         @Override
         public void handle(TerminateExperiment event) {
-            System.err.println("Finishing experiment - terminating....");
+            System.err.println("\nFinishing experiment - terminating....\n");
+            Snapshot.finalReport();
             System.exit(0);
         }
     };

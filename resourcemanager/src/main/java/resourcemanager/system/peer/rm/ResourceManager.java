@@ -122,11 +122,12 @@ public final class ResourceManager extends ComponentDefinition {
             configuration = init.getConfiguration();
             random = new Random(init.getConfiguration().getSeed());
             availableResources = init.getAvailableResources();
+
             long period = configuration.getPeriod();
-            availableResources = init.getAvailableResources();
             SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(period, period);
             rst.setTimeoutEvent(new UpdateTimeout(rst));
             trigger(rst, timerPort);
+
             managedJobs = new HashMap<Long, ManagedJob>();
             outstandingProbes = new HashMap<Long, LinkedList<ProbeInfos>>();
             pendingJobs = new LinkedList<Job>();
@@ -159,6 +160,8 @@ public final class ResourceManager extends ComponentDefinition {
 //                return;
 //            }
 //            Address dest = neighbours.get(random.nextInt(neighbours.size()));
+
+            Snapshot.nodeReport(self, activeJobs.size(), pendingJobs.size(), availableResources.getNumFreeCpus(), availableResources.getFreeMemInMbs());
         }
     };
 
@@ -176,11 +179,13 @@ public final class ResourceManager extends ComponentDefinition {
              */
             Job job = new Job(event.getId(), event.getIdBatch(), event.getNumCpus(), event.getMemoryInMbs(), event.getSource());
             pendingJobs.add(job);
-//            System.out.println(self + " : " + pendingJobs.size());
+
+            Snapshot.allocationRequest(self, event.getId(), event.getIdBatch(), event.getSource(), pendingJobs.size());
+
             tryToProcessNewJob();
         }
     };
-    
+
     Handler<RequestResources.Response> handleResourceAllocationResponse = new Handler<RequestResources.Response>() {
         @Override
         public void handle(RequestResources.Response event) {
@@ -193,22 +198,25 @@ public final class ResourceManager extends ComponentDefinition {
             if (event.getIdBatch() != -1) {
                 id = event.getIdBatch();
                 batchJobsProcessed.put(event.getIdBatch(), batchJobsProcessed.get(event.getIdBatch()) + 1);
+                Snapshot.allocateJobInBatch(self, event.getIdBatch(), event.getId());
+
                 if (batchJobsProcessed.get(event.getIdBatch()).equals(batchJobs.get(event.getIdBatch()))) {
-//                  Snapshot.printInFile("bx" + id + "@" + System.currentTimeMillis() / 1000L);
                     batchJobs.remove(event.getIdBatch());
                     batchJobsProcessed.remove(event.getIdBatch());
+
+                    Snapshot.allJobsInBatchAllocated(self, event.getIdBatch());
                 }
             } else {
-//    		Snapshot.printInFile("jx" + id + "@" + System.currentTimeMillis() / 1000L);
                 uniqueJobsWaitingTime.put(id, System.currentTimeMillis() / 1000L - uniqueJobsWaitingTime.get(id));
                 Long waited = System.currentTimeMillis() / 1000L - uniqueJobsWaitingTime.get(id);
                 uniqueJobsWaitingTime.remove(id);
-                Snapshot.printInFile(waited.toString());
+
+                Snapshot.allocateJob(self, id, waited);
             }
-            
+
             int processingTime = managedJobs.get(id).getTimeToHoldResource();
             managedJobs.remove(id);
-            
+
             ScheduleTimeout jobProcessingTimeout = new ScheduleTimeout(processingTime);
             jobProcessingTimeout.setTimeoutEvent(new JobProcessingTimeout(jobProcessingTimeout, event.getId(), event.getSource()));
             trigger(jobProcessingTimeout, timerPort);
@@ -237,12 +245,12 @@ public final class ResourceManager extends ComponentDefinition {
                 }
             }
             if (releasedJob == null) {
-                Snapshot.printInFile("Trying to remove a job not present in the activeJobs list");
-                System.exit(0);
+                throw new IndexOutOfBoundsException(self.getId() + ": Trying to remove a job not present in the activeJobs list");
             } else {
                 activeJobs.remove(releasedJobIndex);
                 availableResources.release(releasedJob.getNumCPUs(), releasedJob.getMemoryInMbs());
-                //Snapshot.printInFile("-" + releasedJob.getId() + "@" + System.currentTimeMillis() / 1000L);
+
+                Snapshot.releaseJob(self, releasedJob.getId());
                 tryToProcessNewJob();
             }
 
@@ -252,11 +260,10 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<CyclonSample> handleCyclonSample = new Handler<CyclonSample>() {
         @Override
         public void handle(CyclonSample event) {
-//            System.out.println("Received samples: " + event.getSample().size());
-
             if (useGradient) {
                 return; // we don't care
             }
+            Snapshot.cyclonSampleReceived(self, event.getSample().size());
 
             // receive a new list of neighbours
             // all the lists in neighbours are the same object, only replace one of them
@@ -272,6 +279,7 @@ public final class ResourceManager extends ComponentDefinition {
             if (!useGradient) {
                 return; // we don't care
             }
+            Snapshot.tmanSampleReceived(self, event.getType(), event.getSample().size());
 
             // receive a new list of neighbours
             ResourceType type = event.getType();
@@ -283,8 +291,8 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<RequestResource> handleRequestResource = new Handler<RequestResource>() {
         @Override
         public void handle(RequestResource event) {
+            Snapshot.resourceDemand(self, event.getNumCpus(), event.getMemoryInMbs(), event.getId());
 
-//          System.out.println("Allocate resources: " + event.getNumCpus() + " + " + event.getMemoryInMbs());
             /*
              * We pick a fixed number of neighbours at random
              * We send each one a probe (with the id of the job) to check their loads
@@ -292,7 +300,6 @@ public final class ResourceManager extends ComponentDefinition {
             outstandingProbes.put(event.getId(), new LinkedList<ProbeInfos>());
             ManagedJob job = new ManagedJob(event.getId(), -1, event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
             managedJobs.put(event.getId(), job);
-//            Snapshot.printInFile("j+" + event.getId() + "@" + System.currentTimeMillis() / 1000L);
             uniqueJobsWaitingTime.put(event.getId(), System.currentTimeMillis() / 1000L);
 
             ResourceType requestedType = job.getResourceType();
@@ -312,14 +319,15 @@ public final class ResourceManager extends ComponentDefinition {
         @Override
         public void handle(RequestBatchResource event) {
             if (neighbours.size() != 0) {
+                Snapshot.resourceBatchDemand(self, event.getNumCpus(), event.getMemoryInMbs(), event.getNbNodes(), event.getId());
+
                 batchJobs.put(event.getId(), event.getNbNodes());
                 batchJobsProcessed.put(event.getId(), 0);
                 outstandingProbes.put(event.getId(), new LinkedList<ProbeInfos>());
                 int nbNodes = event.getNbNodes();
                 ManagedJob job = new ManagedJob(event.getId(), event.getId(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
                 managedJobs.put(event.getId(), job);
-                Snapshot.printInFile("b+" + event.getId() + "@" + System.currentTimeMillis() / 1000L);
-                
+
                 ResourceType type = job.getResourceType();
                 if (useGradient) {
                     // TODO
@@ -340,6 +348,8 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<Probe.Request> handleProbeRequest = new Handler<Probe.Request>() {
         @Override
         public void handle(Probe.Request event) {
+            Snapshot.probeRequested(self, activeJobs.size(), pendingJobs.size());
+
             int nbPendingJobs = activeJobs.size() + pendingJobs.size();
             Probe.Response res = new Probe.Response(self, event.getSource(), event.getId(), nbPendingJobs, event.getNbProbes());
             trigger(res, networkPort);
@@ -357,6 +367,8 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<Probe.Response> handleProbeResponse = new Handler<Probe.Response>() {
         @Override
         public void handle(Probe.Response event) {
+            Snapshot.probeResponded(self);
+
             ProbeInfos probeInfos = new ProbeInfos(event.getSource(), event.getNbPendingJobs(), event.getNbProbes());
             outstandingProbes.get(event.getId()).add(probeInfos);
             if (outstandingProbes.get(event.getId()).size() == event.getNbProbes()) {
@@ -388,6 +400,8 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<JobProcessingTimeout> handleJobProcessingTimeout = new Handler<JobProcessingTimeout>() {
         @Override
         public void handle(JobProcessingTimeout event) {
+            Snapshot.jobTimeout(self, event.getWorker(), event.getId());
+
             RequestResources.Release rel = new RequestResources.Release(self, event.getWorker(), event.getId());
             trigger(rel, networkPort);
         }
@@ -406,8 +420,10 @@ public final class ResourceManager extends ComponentDefinition {
             if (availableResources.getNumFreeCpus() >= firstJob.getNumCPUs() && availableResources.getFreeMemInMbs() >= firstJob.getMemoryInMbs()) {
                 availableResources.allocate(firstJob.getNumCPUs(), firstJob.getMemoryInMbs());
                 pendingJobs.removeFirst();
-//	    		System.out.println(self + " : " + pendingJobs.size());
                 activeJobs.add(firstJob);
+
+                Snapshot.startingJob(self, firstJob.getId(), firstJob.getIdBatch(), pendingJobs.size(), availableResources.getNumFreeCpus(), availableResources.getFreeMemInMbs());
+
                 RequestResources.Response res = new RequestResources.Response(self, firstJob.getInitiator(), true, firstJob.getId(), firstJob.getIdBatch());
                 trigger(res, networkPort);
                 tryToProcessNewJob();
@@ -451,15 +467,18 @@ public final class ResourceManager extends ComponentDefinition {
      * Upon reception of the appropriate RequestResources.Release message, it is removed from the activeJobs set 
      */
     private class Job {
+
         /**
-         * Weight when trying to guess if a ressource is more CPU or more memory.
+         * Weight when trying to guess if a ressource is more CPU or more
+         * memory.
          */
         static final int CPU_WEIGHT = 2000;
         /**
-         * Weight when trying to guess if a ressource is more CPU or more memory.
+         * Weight when trying to guess if a ressource is more CPU or more
+         * memory.
          */
         static final int MEMORY_WEIGHT = 1;
-        
+
         private final Address initiator;
         private final long idBatch;
         private final long id;
@@ -473,9 +492,9 @@ public final class ResourceManager extends ComponentDefinition {
             this.numCPUs = numCPUs;
             this.amountMemInMb = amountMemInMb;
             this.initiator = initiator;
-            
+
             // guess if a resource is more CPU or more Memory
-            long score = (numCPUs*CPU_WEIGHT - amountMemInMb*MEMORY_WEIGHT);
+            long score = (numCPUs * CPU_WEIGHT - amountMemInMb * MEMORY_WEIGHT);
             if (score > 0) {
                 type = ResourceType.CPU;
             } else {
@@ -531,7 +550,7 @@ public final class ResourceManager extends ComponentDefinition {
         randomList.add(self);
 
         int nbProbes = Math.min(maxProbes, randomList.size());
-        Collections.shuffle(randomList);
+        Collections.shuffle(randomList, random);
         return new ArrayList<Address>(randomList.subList(0, nbProbes - 1));
     }
 
@@ -543,21 +562,22 @@ public final class ResourceManager extends ComponentDefinition {
     private LinkedList<Address> pickBestMWorkers(LinkedList<ProbeInfos> probeInfosList, int nbDesiredNodes) {
         LinkedList<ProbeInfos> probeList = new LinkedList<ProbeInfos>(probeInfosList);
         Collections.sort(probeList, new ProbeComparatorPerPendingJob());
-        
+
         LinkedList<Address> bestMWorkers = new LinkedList<Address>();
         int added = 0;
         for (ProbeInfos probe : probeList) {
             bestMWorkers.add(probe.getWorker());
             added++;
-            
+
             if (added == nbDesiredNodes) {
                 break;
             }
         }
         return bestMWorkers;
     }
-    
+
     private class ProbeComparatorPerPendingJob implements Comparator<ProbeInfos> {
+
         @Override
         public int compare(ProbeInfos a, ProbeInfos b) {
             return Integer.compare(a.getNbPendingJobs(), b.getNbPendingJobs());
