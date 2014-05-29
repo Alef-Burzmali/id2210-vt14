@@ -26,11 +26,13 @@ import tman.system.peer.tman.TManSample;
 import tman.system.peer.tman.TManSamplePort;
 import common.configuration.RmConfiguration;
 import common.peer.AvailableResources;
+import common.peer.ResourceType;
 import common.simulation.RequestBatchResource;
 import common.simulation.RequestResource;
 import cyclon.system.peer.cyclon.CyclonSample;
 import cyclon.system.peer.cyclon.CyclonSamplePort;
 import cyclon.system.peer.cyclon.PeerDescriptor;
+import java.util.EnumMap;
 
 /**
  * Should have some comments here.
@@ -46,7 +48,8 @@ public final class ResourceManager extends ComponentDefinition {
     Negative<Web> webPort = negative(Web.class);
     Positive<CyclonSamplePort> cyclonSamplePort = positive(CyclonSamplePort.class);
     Positive<TManSamplePort> tmanPort = positive(TManSamplePort.class);
-    ArrayList<Address> neighbours = new ArrayList<Address>();
+    EnumMap<ResourceType, ArrayList<Address>> neighbours
+            = new EnumMap<ResourceType, ArrayList<Address>>(ResourceType.class);
     private Address self;
     private RmConfiguration configuration;
     Random random;
@@ -91,6 +94,11 @@ public final class ResourceManager extends ComponentDefinition {
 
     public HashMap<Long, Long> uniqueJobsWaitingTime;
 
+    /**
+     * Select if we are using TMan (and gradient) or Cyclon (and random search)
+     */
+    private boolean useGradient = false;
+
     public ResourceManager() {
         subscribe(handleInit, control);
         subscribe(handleCyclonSample, cyclonSamplePort);
@@ -126,6 +134,18 @@ public final class ResourceManager extends ComponentDefinition {
             uniqueJobsWaitingTime = new HashMap<Long, Long>();
             batchJobs = new HashMap<Long, Integer>();
             batchJobsProcessed = new HashMap<Long, Integer>();
+
+            useGradient = configuration.isGradient();
+            if (useGradient) {
+                for (ResourceType type : ResourceType.values()) {
+                    neighbours.put(type, new ArrayList<Address>());
+                }
+            } else {
+                ArrayList<Address> commonList = new ArrayList<Address>();
+                for (ResourceType type : ResourceType.values()) {
+                    neighbours.put(type, commonList);
+                }
+            }
         }
     };
 
@@ -233,19 +253,30 @@ public final class ResourceManager extends ComponentDefinition {
         @Override
         public void handle(CyclonSample event) {
 //            System.out.println("Received samples: " + event.getSample().size());
-            
+
+            if (useGradient) {
+                return; // we don't care
+            }
+
             // receive a new list of neighbours
-            neighbours.clear();
-            neighbours.addAll(event.getSample());
+            // all the lists in neighbours are the same object, only replace one of them
+            // it will propagate to all
+            neighbours.get(ResourceType.CPU).clear();
+            neighbours.get(ResourceType.CPU).addAll(event.getSample());
         }
     };
 
     Handler<TManSample> handleTManSample = new Handler<TManSample>() {
         @Override
         public void handle(TManSample event) {
-            //TODO
-        }
+            if (!useGradient) {
+                return; // we don't care
+            }
 
+            // receive a new list of neighbours
+            ResourceType type = event.getType();
+            neighbours.get(type).clear();
+            neighbours.get(type).addAll(event.getSample());
         }
     };
 
@@ -264,10 +295,15 @@ public final class ResourceManager extends ComponentDefinition {
 //            Snapshot.printInFile("j+" + event.getId() + "@" + System.currentTimeMillis() / 1000L);
             uniqueJobsWaitingTime.put(event.getId(), System.currentTimeMillis() / 1000L);
 
-            ArrayList<Address> randomList = pickAtRandom(NBPROBES);
-            for (Address p : randomList) {
-                Probe.Request probe = new Probe.Request(self, p, event.getId(), randomList.size());
-                trigger(probe, networkPort);
+            ResourceType requestedType = job.getResourceType();
+            if (useGradient) {
+                // TODO
+            } else {
+                ArrayList<Address> randomList = pickAtRandom(NBPROBES, neighbours.get(requestedType));
+                for (Address p : randomList) {
+                    Probe.Request probe = new Probe.Request(self, p, event.getId(), randomList.size());
+                    trigger(probe, networkPort);
+                }
             }
         }
     };
@@ -284,10 +320,15 @@ public final class ResourceManager extends ComponentDefinition {
                 managedJobs.put(event.getId(), job);
                 Snapshot.printInFile("b+" + event.getId() + "@" + System.currentTimeMillis() / 1000L);
                 
-                ArrayList<Address> randomList = pickAtRandom(NBPROBES * nbNodes);
-                for (Address p : randomList) {
-                    Probe.Request probe = new Probe.Request(self, p, event.getId(), randomList.size());
-                    trigger(probe, networkPort);
+                ResourceType type = job.getResourceType();
+                if (useGradient) {
+                    // TODO
+                } else {
+                    ArrayList<Address> randomList = pickAtRandom(NBPROBES * nbNodes, neighbours.get(type));
+                    for (Address p : randomList) {
+                        Probe.Request probe = new Probe.Request(self, p, event.getId(), randomList.size());
+                        trigger(probe, networkPort);
+                    }
                 }
             }
         }
@@ -424,6 +465,7 @@ public final class ResourceManager extends ComponentDefinition {
         private final long id;
         private final int numCPUs;
         private final int amountMemInMb;
+        private final ResourceType type;
 
         public Job(long id, long idBatch, int numCPUs, int amountMemInMb, Address initiator) {
             this.id = id;
@@ -431,6 +473,14 @@ public final class ResourceManager extends ComponentDefinition {
             this.numCPUs = numCPUs;
             this.amountMemInMb = amountMemInMb;
             this.initiator = initiator;
+            
+            // guess if a resource is more CPU or more Memory
+            long score = (numCPUs*CPU_WEIGHT - amountMemInMb*MEMORY_WEIGHT);
+            if (score > 0) {
+                type = ResourceType.CPU;
+            } else {
+                type = ResourceType.MEMORY;
+            }
         }
 
         public long getIdBatch() {
@@ -452,6 +502,10 @@ public final class ResourceManager extends ComponentDefinition {
         public int getMemoryInMbs() {
             return amountMemInMb;
         }
+
+        public ResourceType getResourceType() {
+            return type;
+        }
     }
 
     private class ManagedJob extends Job {
@@ -472,8 +526,8 @@ public final class ResourceManager extends ComponentDefinition {
     /**
      * Pick at most maxProbes among peers+{self}
      */
-    private ArrayList<Address> pickAtRandom(int maxProbes) {
-        ArrayList<Address> randomList = new ArrayList<Address>(neighbours);
+    private ArrayList<Address> pickAtRandom(int maxProbes, ArrayList<Address> peers) {
+        ArrayList<Address> randomList = new ArrayList<Address>(peers);
         randomList.add(self);
 
         int nbProbes = Math.min(maxProbes, randomList.size());
