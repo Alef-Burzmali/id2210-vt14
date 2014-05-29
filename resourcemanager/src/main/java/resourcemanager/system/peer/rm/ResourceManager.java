@@ -551,7 +551,7 @@ public final class ResourceManager extends ComponentDefinition {
 
         int nbProbes = Math.min(maxProbes, randomList.size());
         Collections.shuffle(randomList, random);
-        return new ArrayList<Address>(randomList.subList(0, nbProbes - 1));
+        return new ArrayList<Address>(randomList.subList(0, nbProbes));
     }
 
     private Address pickBestWorker(LinkedList<ProbeInfos> probeInfosList) {
