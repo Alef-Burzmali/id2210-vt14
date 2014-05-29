@@ -15,7 +15,7 @@ public class TManSample extends Event {
 
 	public TManSample(ResourceType type, ArrayList<Address> partners) {
                 this.type = type;
-		this.partners = partners;
+		this.partners = new ArrayList<Address>(partners);
 	}
         
 	public TManSample() {
