@@ -170,7 +170,7 @@ public final class DataCenterSimulator extends ComponentDefinition {
         
         AvailableResources ar = new AvailableResources(numCpus, memInMb);
         trigger(new PeerInit(address, bootstrapConfiguration, cyclonConfiguration, 
-                rmConfiguration, ar), peer.getControl());
+                tmanConfiguration, rmConfiguration, ar), peer.getControl());
 
         trigger(new Start(), peer.getControl());
         peers.put(id, peer);

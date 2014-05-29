@@ -22,10 +22,13 @@ import resourcemanager.system.peer.rm.ResourceManager;
 import resourcemanager.system.peer.rm.RmInit;
 import common.configuration.RmConfiguration;
 import common.configuration.CyclonConfiguration;
+import common.configuration.TManConfiguration;
 import common.peer.AvailableResources;
 import common.peer.PeerDescriptor;
+import common.peer.ResourceType;
 import cyclon.system.peer.cyclon.*;
 import tman.system.peer.tman.TMan;
+import tman.system.peer.tman.TManInit;
 import tman.system.peer.tman.TManSamplePort;
 
 
@@ -36,7 +39,7 @@ public final class Peer extends ComponentDefinition {
         Positive<Network> network = positive(Network.class);
 	Positive<Timer> timer = positive(Timer.class);
 	
-        private Component cyclon, tman, rm, bootstrap;
+        private Component cyclon, tmanCPU, tmanRAM, rm, bootstrap;
 	private Address self;
 	private int bootstrapRequestPeerCount;
 	private boolean bootstrapped;
@@ -46,23 +49,30 @@ public final class Peer extends ComponentDefinition {
 	
 	public Peer() {
 		cyclon = create(Cyclon.class);
-		tman = create(TMan.class);
+		tmanCPU = create(TMan.class);
+                tmanRAM = create(TMan.class);
 		rm = create(ResourceManager.class);
 		bootstrap = create(BootstrapClient.class);
 
 		connect(network, rm.getNegative(Network.class));
 		connect(network, cyclon.getNegative(Network.class));
 		connect(network, bootstrap.getNegative(Network.class));
-		connect(network, tman.getNegative(Network.class));
+		connect(network, tmanCPU.getNegative(Network.class));
+                connect(network, tmanRAM.getNegative(Network.class));
 		connect(timer, rm.getNegative(Timer.class));
 		connect(timer, cyclon.getNegative(Timer.class));
 		connect(timer, bootstrap.getNegative(Timer.class));
-		connect(timer, tman.getNegative(Timer.class));
+		connect(timer, tmanCPU.getNegative(Timer.class));
+                connect(timer, tmanRAM.getNegative(Timer.class));
 		connect(cyclon.getPositive(CyclonSamplePort.class), 
                         rm.getNegative(CyclonSamplePort.class));
 		connect(cyclon.getPositive(CyclonSamplePort.class), 
-                        tman.getNegative(CyclonSamplePort.class));
-		connect(tman.getPositive(TManSamplePort.class), 
+                        tmanCPU.getNegative(CyclonSamplePort.class));
+                connect(cyclon.getPositive(CyclonSamplePort.class), 
+                        tmanRAM.getNegative(CyclonSamplePort.class));
+		connect(tmanCPU.getPositive(TManSamplePort.class), 
+                        rm.getNegative(TManSamplePort.class));
+                connect(tmanRAM.getPositive(TManSamplePort.class), 
                         rm.getNegative(TManSamplePort.class));
 
                 connect(rmPort, rm.getNegative(RmPort.class));
@@ -78,12 +88,15 @@ public final class Peer extends ComponentDefinition {
 		public void handle(PeerInit init) {
 			self = init.getPeerSelf();
 			CyclonConfiguration cyclonConfiguration = init.getCyclonConfiguration();
+                        TManConfiguration tmanConfiguration = init.getTmanConfiguration();
 			rmConfiguration = init.getApplicationConfiguration();
 			bootstrapRequestPeerCount = cyclonConfiguration.getBootstrapRequestPeerCount();
 
                         availableResources = init.getAvailableResources();
                         
 			trigger(new CyclonInit(cyclonConfiguration, availableResources), cyclon.getControl());
+                        trigger(new TManInit(self, tmanConfiguration, availableResources, ResourceType.CPU), tmanCPU.getControl());
+                        trigger(new TManInit(self, tmanConfiguration, availableResources, ResourceType.MEMORY), tmanRAM.getControl());
 			trigger(new BootstrapClientInit(self, init.getBootstrapConfiguration()), bootstrap.getControl());
 			BootstrapRequest request = new BootstrapRequest("Cyclon", bootstrapRequestPeerCount);
 			trigger(request, bootstrap.getPositive(P2pBootstrap.class));
