@@ -129,7 +129,7 @@ public final class TMan extends ComponentDefinition {
         @Override
         public void handle(CyclonSample event) {
             List<Address> cyclonPartners = event.getSample();
-
+            
             // merge cyclonPartners into TManPartners
             UUID requestId = UUID.randomUUID();
             DescriptorBuffer buffer = prepareBuffer();
@@ -173,7 +173,7 @@ public final class TMan extends ComponentDefinition {
             if (event.getType() != type) {
                 return;
             }
-            
+             
             mergeBuffer(event.getSelectedBuffer());
         }
     };
@@ -204,6 +204,7 @@ public final class TMan extends ComponentDefinition {
     
     /**
      * Merge a received buffer in our partial view.
+     * @TODO make the number of nodes kept configurable
      */
     private void mergeBuffer(DescriptorBuffer buffer) {
         List<PeerDescriptor> peers = buffer.getDescriptors();
@@ -211,6 +212,10 @@ public final class TMan extends ComponentDefinition {
         ArrayList<PeerDescriptor> set = new ArrayList<PeerDescriptor>(tmanPartners);
         
         for (PeerDescriptor p : peers) {
+            if (p.getAddress().equals(self)) {
+                continue;
+            }
+            
             int index = set.indexOf(p);
             if (index != -1) {
                 PeerDescriptor q = set.get(index);
@@ -226,14 +231,14 @@ public final class TMan extends ComponentDefinition {
         }
         
         rank(set);
-        tmanPartners = set;
+        int keepNPeers = Math.min(5, set.size());
+        tmanPartners = new ArrayList<PeerDescriptor>(set.subList(0, keepNPeers));
     }
     
     /**
      * Inplace ranking function.
      * @param base      Peer at the "center" of our ranking.
      * @param peers     Peers to rank.
-     * @TODO Implement it
      */
     private void rank(List<PeerDescriptor> peers) {
         PeerDescriptor selfDescriptor = new PeerDescriptor(self, descriptorAge, availableResources);
