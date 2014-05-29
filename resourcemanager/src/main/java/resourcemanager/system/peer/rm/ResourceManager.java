@@ -532,44 +532,35 @@ public final class ResourceManager extends ComponentDefinition {
 
         int nbProbes = Math.min(maxProbes, randomList.size());
         Collections.shuffle(randomList);
-        return (ArrayList<Address>) randomList.subList(0, nbProbes - 1);
+        return new ArrayList<Address>(randomList.subList(0, nbProbes - 1));
     }
 
     private Address pickBestWorker(LinkedList<ProbeInfos> probeInfosList) {
-        int indexMin = 0;
-        int min = Integer.MAX_VALUE;
-
-        for (int i = 0; i < probeInfosList.size(); i++) {
-            if (probeInfosList.get(i).getNbPendingJobs() < min) {
-                indexMin = i;
-                min = probeInfosList.get(i).getNbPendingJobs();
-            }
-        }
-
-        return probeInfosList.get(indexMin).getWorker();
+        ProbeInfos fewerPendingJobs = Collections.min(probeInfosList, new ProbeComparatorPerPendingJob());
+        return fewerPendingJobs.getWorker();
     }
 
     private LinkedList<Address> pickBestMWorkers(LinkedList<ProbeInfos> probeInfosList, int nbDesiredNodes) {
+        LinkedList<ProbeInfos> probeList = new LinkedList<ProbeInfos>(probeInfosList);
+        Collections.sort(probeList, new ProbeComparatorPerPendingJob());
+        
         LinkedList<Address> bestMWorkers = new LinkedList<Address>();
-        int indexMin = 0;
-        int min = Integer.MAX_VALUE;
-
-        // If a RM has not enough neighbours reduce the number of workers
-        if (neighbours.size() < nbDesiredNodes) {
-            nbDesiredNodes = neighbours.size();
-        }
-
-        for (int j = 0; j < nbDesiredNodes; j++) {
-            min = Integer.MAX_VALUE;
-            for (int i = 0; i < probeInfosList.size(); i++) {
-                if (probeInfosList.get(i).getNbPendingJobs() < min) {
-                    indexMin = i;
-                    min = probeInfosList.get(i).getNbPendingJobs();
-                }
+        int added = 0;
+        for (ProbeInfos probe : probeList) {
+            bestMWorkers.add(probe.getWorker());
+            added++;
+            
+            if (added == nbDesiredNodes) {
+                break;
             }
-            bestMWorkers.add(probeInfosList.get(indexMin).getWorker());
-            probeInfosList.remove(indexMin);
         }
         return bestMWorkers;
+    }
+    
+    private class ProbeComparatorPerPendingJob implements Comparator<ProbeInfos> {
+        @Override
+        public int compare(ProbeInfos a, ProbeInfos b) {
+            return Integer.compare(a.getNbPendingJobs(), b.getNbPendingJobs());
+        }
     }
 }
