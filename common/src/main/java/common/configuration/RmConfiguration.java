@@ -73,7 +73,7 @@ public final class RmConfiguration {
         int numPartitions = Integer.parseInt(p.getProperty("numPartitions"));
         int maxNumRoutingEntries = Integer.parseInt(p.getProperty("maxNumRoutingEntries"));
         long seed = Long.parseLong(p.getProperty("seed"));
-        boolean gradient = Boolean.parseBoolean(p.getProperty("boolean"));
+        boolean gradient = Boolean.parseBoolean(p.getProperty("gradient"));
 
         return new RmConfiguration(period, numPartitions, maxNumRoutingEntries, seed, gradient);
     }
