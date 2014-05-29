@@ -14,19 +14,22 @@ public final class RmConfiguration {
     private final int numPartitions;
     private final int maxNumRoutingEntries;
     private final long seed;
+    private final boolean gradient;
 
-    public RmConfiguration(long seed) {
+    public RmConfiguration(long seed, boolean useGradient) {
         this.period = 2*1000;
         this.numPartitions = 10;
         this.maxNumRoutingEntries = 20;
         this.seed = seed;
+        this.gradient = useGradient;
     }
     
-    public RmConfiguration(long period, int numPartitions, int maxNumRoutingEntries, long seed) {
+    public RmConfiguration(long period, int numPartitions, int maxNumRoutingEntries, long seed, boolean useGradient) {
         this.period = period;
         this.numPartitions = numPartitions;
         this.maxNumRoutingEntries = maxNumRoutingEntries;
         this.seed = seed;
+        this.gradient = useGradient;
     }
 
     public long getPeriod() {
@@ -45,12 +48,17 @@ public final class RmConfiguration {
         return seed;
     }
     
+    public boolean isGradient() {
+        return gradient;
+    }
+    
     public void store(String file) throws IOException {
         Properties p = new Properties();
         p.setProperty("period", "" + period);
         p.setProperty("numPartitions", "" + numPartitions);
         p.setProperty("maxNumRoutingEntries", "" + maxNumRoutingEntries);
         p.setProperty("seed", "" + seed);
+        p.setProperty("gradient", ""+gradient);
 
         Writer writer = new FileWriter(file);
         p.store(writer, "se.sics.kompics.p2p.overlay.application");
@@ -65,7 +73,8 @@ public final class RmConfiguration {
         int numPartitions = Integer.parseInt(p.getProperty("numPartitions"));
         int maxNumRoutingEntries = Integer.parseInt(p.getProperty("maxNumRoutingEntries"));
         long seed = Long.parseLong(p.getProperty("seed"));
+        boolean gradient = Boolean.parseBoolean(p.getProperty("boolean"));
 
-        return new RmConfiguration(period, numPartitions, maxNumRoutingEntries, seed);
+        return new RmConfiguration(period, numPartitions, maxNumRoutingEntries, seed, gradient);
     }
 }
