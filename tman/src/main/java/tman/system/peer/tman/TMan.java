@@ -2,6 +2,7 @@ package tman.system.peer.tman;
 
 import common.configuration.TManConfiguration;
 import common.peer.AvailableResources;
+import common.peer.ResourceType;
 import java.util.ArrayList;
 
 import cyclon.system.peer.cyclon.CyclonSample;
@@ -40,6 +41,7 @@ public final class TMan extends ComponentDefinition {
     private TManConfiguration tmanConfiguration;
     private Random r;
     private AvailableResources availableResources;
+    private ResourceType type;
     
     /**
      * Lamport clock for our own descriptor.
@@ -75,6 +77,7 @@ public final class TMan extends ComponentDefinition {
             period = tmanConfiguration.getPeriod();
             r = new Random(tmanConfiguration.getSeed());
             availableResources = init.getAvailableResources();
+            type = init.getType();
             
             SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(period, period);
             rst.setTimeoutEvent(new TManSchedule(rst));
@@ -98,7 +101,7 @@ public final class TMan extends ComponentDefinition {
             Snapshot.updateTManPartners(self, partnerAddresses);
 
             // Publish sample to connected components
-            trigger(new TManSample(partnerAddresses), tmanPort);
+            trigger(new TManSample(type, partnerAddresses), tmanPort);
             
             // Active part of TMan
             // Send a partial view to a selected peer.
@@ -110,8 +113,8 @@ public final class TMan extends ComponentDefinition {
                 return;
             }
             
-            DescriptorBuffer buffer = prepareBuffer(peer);
-            ExchangeMsg.Request request = new ExchangeMsg.Request(requestId, buffer, self, peer.getAddress());
+            DescriptorBuffer buffer = prepareBuffer();
+            ExchangeMsg.Request request = new ExchangeMsg.Request(type, requestId, buffer, self, peer.getAddress());
             trigger(request, networkPort);
         }
     };
@@ -129,9 +132,9 @@ public final class TMan extends ComponentDefinition {
 
             // merge cyclonPartners into TManPartners
             UUID requestId = UUID.randomUUID();
-            DescriptorBuffer buffer = prepareBuffer(null);
+            DescriptorBuffer buffer = prepareBuffer();
             for (Address peer : cyclonPartners) {
-                ExchangeMsg.Request request = new ExchangeMsg.Request(requestId, buffer, self, peer);
+                ExchangeMsg.Request request = new ExchangeMsg.Request(type, requestId, buffer, self, peer);
                 trigger(request, networkPort);
             }
         }
@@ -144,10 +147,15 @@ public final class TMan extends ComponentDefinition {
     Handler<ExchangeMsg.Request> handleTManPartnersRequest = new Handler<ExchangeMsg.Request>() {
         @Override
         public void handle(ExchangeMsg.Request event) {
+            // if the request is not for our type of resource, silently ignore it.
+            if (event.getType() != type) {
+                return;
+            }
+            
             UUID requestId = event.getRequestId();
             Address peer = event.getSource();
-            DescriptorBuffer buffer = prepareBuffer(peer);
-            ExchangeMsg.Response response = new ExchangeMsg.Response(requestId, buffer, self, peer);
+            DescriptorBuffer buffer = prepareBuffer();
+            ExchangeMsg.Response response = new ExchangeMsg.Response(type, requestId, buffer, self, peer);
             trigger(response, networkPort);
             
             mergeBuffer(event.getRandomBuffer());
@@ -161,25 +169,25 @@ public final class TMan extends ComponentDefinition {
     Handler<ExchangeMsg.Response> handleTManPartnersResponse = new Handler<ExchangeMsg.Response>() {
         @Override
         public void handle(ExchangeMsg.Response event) {
+            // if the request is not for our type of resource, silently ignore it.
+            if (event.getType() != type) {
+                return;
+            }
+            
             mergeBuffer(event.getSelectedBuffer());
         }
     };
     
     /**
      * Prepare a buffer of nodes to be sent to a given node.
-     * m is hardcoded to 10.
      */
-    private DescriptorBuffer prepareBuffer(PeerDescriptor peer) {
-        descriptorAge++;
-        PeerDescriptor selfDescriptor = new PeerDescriptor(self, descriptorAge, availableResources);
+    private DescriptorBuffer prepareBuffer() {
+        PeerDescriptor selfDescriptor = getSelfDescriptor();
         
         ArrayList<PeerDescriptor> buffer = new ArrayList<PeerDescriptor>(tmanPartners);
         buffer.add(selfDescriptor);
         
-        if (peer != null) {
-            rank(peer, buffer);
-        }
-        return new DescriptorBuffer(selfDescriptor, buffer.subList(0, 10));
+        return new DescriptorBuffer(selfDescriptor, buffer);
     }
     
     /**
@@ -187,15 +195,11 @@ public final class TMan extends ComponentDefinition {
      * Psi is hardcoded to 5.
      */
     private PeerDescriptor selectPeer() {
-        int max = Math.min(tmanPartners.size(), 5);
-        
-        // list is empty
-        if (max <= 0) {
+        if (tmanPartners.isEmpty()) {
             return null;
+        } else {
+            return getSoftMaxAddress(tmanPartners);
         }
-        
-        int randomIndex = r.nextInt(max);
-        return tmanPartners.get(randomIndex);
     }
     
     /**
@@ -220,6 +224,8 @@ public final class TMan extends ComponentDefinition {
                 set.add(p);
             }
         }
+        
+        rank(set);
         tmanPartners = set;
     }
     
@@ -229,20 +235,23 @@ public final class TMan extends ComponentDefinition {
      * @param peers     Peers to rank.
      * @TODO Implement it
      */
-    private void rank(PeerDescriptor base, List<PeerDescriptor> peers) {
+    private void rank(List<PeerDescriptor> peers) {
+        PeerDescriptor selfDescriptor = new PeerDescriptor(self, descriptorAge, availableResources);
+        Collections.sort(peers, new ComparatorByResource(type, selfDescriptor));
     }
 
-    // TODO - if you call this method with a list of entries, it will
-    // return a single node, weighted towards the 'best' node (as defined by
-    // ComparatorById) with the temperature controlling the weighting.
-    // A temperature of '1.0' will be greedy and always return the best node.
-    // A temperature of '0.000001' will return a random node.
-    // A temperature of '0.0' will throw a divide by zero exception :)
-    // Reference:
-    // http://webdocs.cs.ualberta.ca/~sutton/book/2/node4.html
-    public Address getSoftMaxAddress(List<Address> entries) {
-        Collections.sort(entries, new ComparatorById(self));
-
+    /**
+     * Select a random node wieghted toward the first (best) ones.
+     * the temperature controlling the weighting.
+     * A temperature of '1.0' will be greedy and always return the best node.
+     * A temperature of '0.000001' will return a random node.
+     * A temperature of '0.0' will throw a divide by zero exception :)
+     * Reference:
+     * @see http://webdocs.cs.ualberta.ca/~sutton/book/2/node4.html
+     * @param entries Sorted list of nodes
+     * @return Selected node
+     */
+    public PeerDescriptor getSoftMaxAddress(List<PeerDescriptor> entries) {
         double rnd = r.nextDouble();
         double total = 0.0d;
         double[] values = new double[entries.size()];
@@ -266,5 +275,14 @@ public final class TMan extends ComponentDefinition {
             }
         }
         return entries.get(entries.size() - 1);
+    }
+    
+    /**
+     * Construct a PeerDescriptor of ourself
+     * @return descriptor of ourself
+     */
+    private PeerDescriptor getSelfDescriptor() {
+        descriptorAge++;
+        return new PeerDescriptor(self, descriptorAge, availableResources);
     }
 }

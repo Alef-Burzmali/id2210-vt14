@@ -1,5 +1,6 @@
 package tman.system.peer.tman;
 
+import common.peer.ResourceType;
 import java.util.UUID;
 
 import se.sics.kompics.address.Address;
@@ -14,13 +15,19 @@ public class ExchangeMsg {
         private static final long serialVersionUID = 8493601671018888143L;
         private final UUID requestId;
         private final DescriptorBuffer randomBuffer;
+        private final ResourceType type;
 
 
-        public Request(UUID requestId, DescriptorBuffer randomBuffer, Address source, 
+        public Request(ResourceType type, UUID requestId, DescriptorBuffer randomBuffer, Address source, 
                 Address destination) {
             super(source, destination);
             this.requestId = requestId;
             this.randomBuffer = randomBuffer;
+            this.type = type;
+        }
+        
+        public ResourceType getType() {
+            return type;
         }
 
 
@@ -44,14 +51,19 @@ public class ExchangeMsg {
         private static final long serialVersionUID = -5022051054665787770L;
         private final UUID requestId;
         private final DescriptorBuffer selectedBuffer;
+        private final ResourceType type;
 
-
-        public Response(UUID requestId, DescriptorBuffer selectedBuffer, Address source, Address destination) {
+        
+        public Response(ResourceType type, UUID requestId, DescriptorBuffer selectedBuffer, Address source, Address destination) {
             super(source, destination);
             this.requestId = requestId;
             this.selectedBuffer = selectedBuffer;
+            this.type = type;
         }
 
+        public ResourceType getType() {
+            return type;
+        }
 
         public UUID getRequestId() {
             return requestId;
