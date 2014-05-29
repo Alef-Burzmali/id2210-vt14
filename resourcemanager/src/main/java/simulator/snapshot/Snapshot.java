@@ -4,6 +4,7 @@ import common.peer.AvailableResources;
 import common.peer.ResourceType;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,17 +12,17 @@ import se.sics.kompics.address.Address;
 
 public class Snapshot {
 
-    private static ConcurrentHashMap<Address, PeerInfo> peers = 
-            new ConcurrentHashMap<Address, PeerInfo>();
-    private static ConcurrentHashMap<Long, Long> batches =
-            new ConcurrentHashMap<Long, Long>();
-    private static ConcurrentHashMap<Long, Long> jobs =
-            new ConcurrentHashMap<Long, Long>();
-    private static List<Long> waitingTimes, batchWaitingTimes, totalTimes;
-    private static int counter = 0;
-    private static String FILENAME = "search.out";
+    private final static ConcurrentHashMap<Address, PeerInfo> peers;
+    private final static ConcurrentHashMap<Long, Long> batches, jobs;
+    private final static List<Long> waitingTimes, batchWaitingTimes, totalTimes;
+    private static int counter = 0, totalJobs = 0;
+    private final static String FILENAME = "search.out";
 
     static {
+        peers = new ConcurrentHashMap<Address, PeerInfo>();
+        jobs = new ConcurrentHashMap<Long, Long>();
+        batches = new ConcurrentHashMap<Long, Long>();
+        
         waitingTimes = Collections.synchronizedList(new LinkedList<Long>());
         batchWaitingTimes = Collections.synchronizedList(new LinkedList<Long>());
         totalTimes = Collections.synchronizedList(new LinkedList<Long>());
@@ -56,15 +57,17 @@ public class Snapshot {
     }
     
     public static void cyclonSampleReceived(Address self, int size) {
-        printInFile(self.getId()+" ("+counter+"): Received cyclon sample of size "+size);
+        //printInFile(self.getId()+" ("+counter+"): Received cyclon sample of size "+size);
     }
     
     public static void tmanSampleReceived(Address self, ResourceType type, int size) {
-        printInFile(self.getId()+" ("+counter+"): Received tman sample "+size+" for resource "+type);
+        //printInFile(self.getId()+" ("+counter+"): Received tman sample "+size+" for resource "+type);
     }
     
     public static void resourceDemand(Address self, int cpus, int memory, long jobId) {
-        jobs.put(jobId, System.currentTimeMillis()/1000L);
+        long requestTime = System.currentTimeMillis()/1000L;
+        totalJobs++;
+        jobs.put(jobId, requestTime);
         printInFile(self.getId()+" ("+counter+"): job requested ("+cpus+"C, "+memory+"MB) - id "+jobId);
     }
     
@@ -122,30 +125,26 @@ public class Snapshot {
     public static void report() {
         String str = prepareReport();
         //System.out.println(str);
-        FileIO.append(str, FILENAME);
+        //FileIO.append(str, FILENAME);
     }
     
     public static void finalReport() {
         String str = prepareReport();
         
-        long[] waitingTimeStats = computeStatistics(waitingTimes);
-        long[] batchWaitingTimeStats = computeStatistics(batchWaitingTimes);
-        long[] executionTimeStats = computeStatistics(totalTimes);
+        HashMap<String, List<Long>> times = new HashMap<String, List<Long>>();
+        times.put("Waiting time", waitingTimes);
+        times.put("Batch waiting time", batchWaitingTimes);
+        times.put("Execution time", totalTimes);
         
-        str += "";
+        str += "\nTotal requested jobs: "+totalJobs+"\n";
         str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %7$7s | %2$7s\n",
-                "** Times **", "#jobs", "Min", "Max",
-                "Mean", "p05", "p95");
-        str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %7$7s | %2$7s\n",
-                "Waiting time", waitingTimeStats[0], waitingTimeStats[1], waitingTimeStats[2],
-                waitingTimeStats[3], waitingTimeStats[4], waitingTimeStats[5]);
-        str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %7$7s | %2$7s\n",
-                "Batch waiting time", batchWaitingTimeStats[0], batchWaitingTimeStats[1], batchWaitingTimeStats[2],
-                batchWaitingTimeStats[3], batchWaitingTimeStats[4], batchWaitingTimeStats[5]);
-        str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %7$7s | %2$7s\n",
-                "Execution time", executionTimeStats[0], executionTimeStats[1], executionTimeStats[2],
-                executionTimeStats[3], executionTimeStats[4], executionTimeStats[5]);
-        str += "";
+                "** Times **", "#jobs", "Min", "Max", "Mean", "p05", "p95");
+        for (String key : times.keySet()) {
+            long[] stats = computeStatistics(times.get(key));
+            str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %7$7s | %2$7s\n",
+                    key, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5]);
+        }
+        str += "###";
         
         System.out.println(str);
         FileIO.append(str, FILENAME);
@@ -189,10 +188,8 @@ public class Snapshot {
                 minFreeMemInMb = p.getFreeMemInMbs();
             }
         }
-        str += "Peer with max num of free cpus: " + maxFreeCpus + "\n";
-        str += "Peer with min num of free cpus: " + minFreeCpus + "\n";
-        str += "Peer with max amount of free mem in MB: " + maxFreeMemInMb + "\n";
-        str += "Peer with min amount of free mem in MB: " + minFreeMemInMb + "\n";
+        str += "Free cpus (min/max): " + minFreeCpus + "/" + maxFreeCpus + "\n";
+        str += "Free mem in MB (min/max): " + minFreeMemInMb + "/" + maxFreeMemInMb + "\n";
         
         return str;
     }

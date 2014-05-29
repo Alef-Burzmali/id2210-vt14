@@ -97,7 +97,7 @@ public final class ResourceManager extends ComponentDefinition {
     /**
      * Select if we are using TMan (and gradient) or Cyclon (and random search)
      */
-    private boolean useGradient = false;
+    private boolean useGradient;
 
     public ResourceManager() {
         subscribe(handleInit, control);
