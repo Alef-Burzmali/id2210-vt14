@@ -1,9 +1,14 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
 package common.simulation.scenarios;
 
 import se.sics.kompics.p2p.experiment.dsl.SimulationScenario;
 
 @SuppressWarnings("serial")
-public class Scenario1 extends Scenario {
+public class Scenario5 extends Scenario {
 
     private final static SimulationScenario scenario = new SimulationScenario() {
         {
@@ -20,10 +25,22 @@ public class Scenario1 extends Scenario {
 
             StochasticProcess process1 = new StochasticProcess() {
                 {
-                    eventInterArrivalTime(constant(100)); // 0.1 ms
+                    eventInterArrivalTime(constant(500)); // 0.5 ms
                     raise(800, Operations.requestResources(),
                             uniform(0, Integer.MAX_VALUE),
-                            constant(1), constant(1000),
+                            constant(2), constant(1000),
+                            constant(1000 * 200) // 200 ms
+                    );
+                }
+            };
+            
+            StochasticProcess process2 = new StochasticProcess() {
+                {
+                    eventInterArrivalTime(constant(500)); // 0.5 ms
+                    raise(10, Operations.requestBatchResources(),
+                            uniform(0, Integer.MAX_VALUE),
+                            constant(10),
+                            constant(2), constant(1000),
                             constant(1000 * 200) // 200 ms
                     );
                 }
@@ -42,7 +59,7 @@ public class Scenario1 extends Scenario {
     };
 
     // -------------------------------------------------------------------
-    public Scenario1() {
+    public Scenario5() {
         super(scenario);
     }
 }

@@ -65,14 +65,14 @@ public class Snapshot {
     }
     
     public static void resourceDemand(Address self, int cpus, int memory, long jobId) {
-        long requestTime = System.currentTimeMillis()/1000L;
+        long requestTime = counter;
         totalJobs++;
         jobs.put(jobId, requestTime);
         printInFile(self.getId()+" ("+counter+"): job requested ("+cpus+"C, "+memory+"MB) - id "+jobId);
     }
     
     public static void resourceBatchDemand(Address self, int cpus, int memory, int nodes, long batchId) {
-        batches.put(batchId, System.currentTimeMillis()/1000L);
+        batches.put(batchId, (long) counter);
         printInFile(self.getId()+" ("+counter+"): batch requested ("+nodes+"N, "+cpus+"C, "+memory+"MB) - id "+batchId);
     }
     
@@ -87,7 +87,7 @@ public class Snapshot {
     }
     
     public static void jobTimeout(Address self, Address worker, long jobId) {
-        long executionTime = System.currentTimeMillis()/1000L - jobs.remove(jobId);
+        long executionTime = (long) counter - jobs.remove(jobId);
         totalTimes.add(executionTime);
         printInFile(self.getId()+" ("+counter+"): job "+jobId+" completed on "+worker.getId() + " (total time: "+executionTime+" ms)");
     }
@@ -101,13 +101,13 @@ public class Snapshot {
     }
     
     public static void allocateJob(Address self, long jobId) {
-        long waitingTime = System.currentTimeMillis()/1000L - jobs.get(jobId);
+        long waitingTime = counter - jobs.get(jobId);
         waitingTimes.add(waitingTime);
 //        printInFile(self.getId()+" ("+counter+"): job "+jobId+" allocated - waited "+waitingTime+" ms");
     }
     
     public static void allocateJobInBatch(Address self, long batchId, long jobId) {
-        long waitingTime = System.currentTimeMillis()/1000L - jobs.get(jobId);
+        long waitingTime = counter - jobs.get(jobId);
         batchWaitingTimes.add(waitingTime);
 //        printInFile(self.getId()+" ("+counter+"): job "+batchId+"-"+jobId+" allocated");
     }
@@ -145,12 +145,12 @@ public class Snapshot {
         times.put("Execution time", totalTimes);
         
         str += "\nTotal requested jobs: "+totalJobs+"\n";
-        str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %7$7s | %2$7s\n",
-                "** Times **", "#jobs", "Min", "Max", "Mean", "p05", "p95");
+        str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %2$7s\n",
+                "** Times **", "#jobs", "Min", "Max", "Mean", "p99");
         for (String key : times.keySet()) {
             long[] stats = computeStatistics(times.get(key));
-            str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %7$7s | %2$7s\n",
-                    key, stats[0], stats[1], stats[2], stats[3], stats[4], stats[5]);
+            str += String.format("%1$-18s: %3$7s | %4$7s | %5$7s | %6$7s | %2$7s\n",
+                    key, stats[0], stats[1], stats[2], stats[3], stats[4]);
         }
         str += "###";
         
@@ -217,7 +217,7 @@ public class Snapshot {
         Collections.sort(times);
         int size = times.size();
         
-        long min = 0, max = 0, mean = 0, p5 = 0, p95 = 0, sum = 0;
+        long min = 0, max = 0, mean = 0, p99 = 0, sum = 0;
         if (!times.isEmpty()) {
             min = Collections.min(times);
             max = Collections.max(times);
@@ -227,16 +227,12 @@ public class Snapshot {
             }
             mean = sum / size;
             
-            // 5th percentile
-            int j5 = (int) Math.ceil(size * 0.05) - 1;
-            p5 = times.get(j5);
-            
             // 95th percentile
-            int j95 = (int) Math.ceil(size * 0.95) - 1;
-            p95 = times.get(j95);
+            int j99 = (int) Math.ceil(size * 0.99) - 1;
+            p99 = times.get(99);
         }
         
-        long[] result = {(long)size, min, max, mean, p5, p95};
+        long[] result = {(long)size, min, max, mean, p99};
         return result;
     }
 }

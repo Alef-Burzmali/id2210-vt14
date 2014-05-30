@@ -231,7 +231,7 @@ public final class TMan extends ComponentDefinition {
         }
         
         rank(set);
-        int keepNPeers = Math.min(10, set.size());
+        int keepNPeers = Math.min(15, set.size());
         tmanPartners = new ArrayList<PeerDescriptor>(set.subList(0, keepNPeers));
     }
     
@@ -286,7 +286,7 @@ public final class TMan extends ComponentDefinition {
      * Construct a PeerDescriptor of ourself
      * @return descriptor of ourself
      */
-    private PeerDescriptor getSelfDescriptor() {
+    private PeerDescriptor getSelfDescriptor() {  
         descriptorAge++;
         return new PeerDescriptor(self, descriptorAge, availableResources);
     }

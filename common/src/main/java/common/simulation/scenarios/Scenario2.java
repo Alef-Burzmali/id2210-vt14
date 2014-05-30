@@ -3,7 +3,7 @@ package common.simulation.scenarios;
 import se.sics.kompics.p2p.experiment.dsl.SimulationScenario;
 
 @SuppressWarnings("serial")
-public class Scenario1 extends Scenario {
+public class Scenario2 extends Scenario {
 
     private final static SimulationScenario scenario = new SimulationScenario() {
         {
@@ -20,10 +20,10 @@ public class Scenario1 extends Scenario {
 
             StochasticProcess process1 = new StochasticProcess() {
                 {
-                    eventInterArrivalTime(constant(100)); // 0.1 ms
+                    eventInterArrivalTime(constant(500)); // 0.5 ms
                     raise(800, Operations.requestResources(),
                             uniform(0, Integer.MAX_VALUE),
-                            constant(1), constant(1000),
+                            constant(2), constant(1000),
                             constant(1000 * 200) // 200 ms
                     );
                 }
@@ -42,7 +42,7 @@ public class Scenario1 extends Scenario {
     };
 
     // -------------------------------------------------------------------
-    public Scenario1() {
+    public Scenario2() {
         super(scenario);
     }
 }

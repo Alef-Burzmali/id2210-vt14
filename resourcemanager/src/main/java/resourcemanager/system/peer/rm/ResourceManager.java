@@ -29,7 +29,6 @@ import common.simulation.RequestBatchResource;
 import common.simulation.RequestResource;
 import cyclon.system.peer.cyclon.CyclonSample;
 import cyclon.system.peer.cyclon.CyclonSamplePort;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashSet;
@@ -125,7 +124,7 @@ public final class ResourceManager extends ComponentDefinition {
             outstandingProbes = new HashMap<Long, HashSet<Address>>();
             pendingJobs = new LinkedList<Job>();
             activeJobs = new LinkedList<Job>();
-            jobsRemainingInBatch = new HashMap<Long, Integer>();
+
 
             useGradient = configuration.isGradient();
             if (useGradient) {
@@ -532,58 +531,8 @@ public final class ResourceManager extends ComponentDefinition {
         
         int nbProbes = Math.min(maxProbes, randomList.size());
         ArrayList<Address> selectedList;
-        if (useGradient) {
-            Collections.reverse(peers);
-            
-            selectedList = new ArrayList<Address>(nbProbes);
-            for (int i = 0; i < nbProbes; i++) {
-                Address selected = getSoftMaxAddress(randomList);
-                randomList.remove(selected);
-                selectedList.add(selected);
-            }
-        } else {
-            Collections.shuffle(peers);
-            selectedList = new ArrayList<Address>(randomList.subList(0, nbProbes));
-        }
+        Collections.shuffle(randomList, random);
+        selectedList = new ArrayList<Address>(randomList.subList(0, nbProbes));
         return selectedList;
-    }
-    
-    /**
-     * Select a random node wieghted toward the first (best) ones.
-     * the temperature controlling the weighting.
-     * A temperature of '1.0' will be greedy and always return the best node.
-     * A temperature of '0.000001' will return a random node.
-     * A temperature of '0.0' will throw a divide by zero exception :)
-     * Reference:
-     * @see http://webdocs.cs.ualberta.ca/~sutton/book/2/node4.html
-     * @param entries Sorted list of nodes
-     * @return Selected node
-     */
-    public Address getSoftMaxAddress(List<Address> entries) {
-        final double temperature = 0.9;
-        
-        double rnd = random.nextDouble();
-        double total = 0.0d;
-        double[] values = new double[entries.size()];
-        int j = entries.size() + 1;
-        for (int i = 0; i < entries.size(); i++) {
-            // get inverse of values - lowest have highest value.
-            double val = j;
-            j--;
-            values[i] = Math.exp(val / temperature);
-            total += values[i];
-        }
-
-        for (int i = 0; i < values.length; i++) {
-            if (i != 0) {
-                values[i] += values[i - 1];
-            }
-            // normalise the probability for this entry
-            double normalisedUtility = values[i] / total;
-            if (normalisedUtility >= rnd) {
-                return entries.get(i);
-            }
-        }
-        return entries.get(entries.size() - 1);
     }
 }
