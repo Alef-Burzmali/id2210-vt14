@@ -61,7 +61,7 @@ public class Snapshot {
     }
     
     public static void tmanSampleReceived(Address self, ResourceType type, int size) {
-        //printInFile(self.getId()+" ("+counter+"): Received tman sample "+size+" for resource "+type);
+        //printInFile(self.getId()+" ("+counter+"): Received tman sample of size "+size+" for resource "+type);
     }
     
     public static void resourceDemand(Address self, int cpus, int memory, long jobId) {
@@ -76,11 +76,11 @@ public class Snapshot {
         printInFile(self.getId()+" ("+counter+"): batch requested ("+nodes+"N, "+cpus+"C, "+memory+"MB) - id "+batchId);
     }
     
-    public static void probeRequested(Address self, int activeJobs, int pendingJobs) {
-        printInFile(self.getId()+" ("+counter+"): probe request ("+activeJobs+"A + "+pendingJobs+"P)");
+    public static void probeRequested(Address self, int activeJobs, int pendingJobs, ResourceType type) {
+        printInFile(self.getId()+" ("+counter+"): probe request ("+activeJobs+"A + "+pendingJobs+"P) for "+type);
     }
-    public static void probeResponded(Address self) {
-        printInFile(self.getId()+" ("+counter+"): probe responded");
+    public static void probeResponded(Address self, ResourceType type) {
+        printInFile(self.getId()+" ("+counter+"): probe responded for "+type);
     }
     
     public static void jobTimeout(Address self, Address worker, long jobId) {

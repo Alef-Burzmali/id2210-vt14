@@ -64,12 +64,6 @@ public final class ResourceManager extends ComponentDefinition {
             }
         }
     };
-    /*
-     * final int | number of probes
-     * hashmap | key: id, value: event
-     * hashmap | key: id, value: [probes]
-     * FIFO linked list | job queued
-     */
 
     // Number of probes sent to random workers
     private static final int NBPROBES = 2;
@@ -303,14 +297,16 @@ public final class ResourceManager extends ComponentDefinition {
             uniqueJobsWaitingTime.put(event.getId(), System.currentTimeMillis() / 1000L);
 
             ResourceType requestedType = job.getResourceType();
+            ArrayList<Address> sendProbesTo;
             if (useGradient) {
-                // TODO
+                sendProbesTo = pickGradient(NBPROBES, neighbours.get(requestedType));
             } else {
-                ArrayList<Address> randomList = pickAtRandom(NBPROBES, neighbours.get(requestedType));
-                for (Address p : randomList) {
-                    Probe.Request probe = new Probe.Request(self, p, event.getId(), randomList.size());
-                    trigger(probe, networkPort);
-                }
+                sendProbesTo = pickAtRandom(NBPROBES, neighbours.get(requestedType));
+            }
+            
+            for (Address p : sendProbesTo) {
+                Probe.Request probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), requestedType);
+                trigger(probe, networkPort);
             }
         }
     };
@@ -328,15 +324,17 @@ public final class ResourceManager extends ComponentDefinition {
                 ManagedJob job = new ManagedJob(event.getId(), event.getId(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
                 managedJobs.put(event.getId(), job);
 
-                ResourceType type = job.getResourceType();
+                ResourceType requestedType = job.getResourceType();
+                ArrayList<Address> sendProbesTo;
                 if (useGradient) {
-                    // TODO
+                    sendProbesTo = pickGradient(NBPROBES * nbNodes, neighbours.get(requestedType));
                 } else {
-                    ArrayList<Address> randomList = pickAtRandom(NBPROBES * nbNodes, neighbours.get(type));
-                    for (Address p : randomList) {
-                        Probe.Request probe = new Probe.Request(self, p, event.getId(), randomList.size());
-                        trigger(probe, networkPort);
-                    }
+                    sendProbesTo = pickAtRandom(NBPROBES * nbNodes, neighbours.get(requestedType));
+                }
+                
+                for (Address p : sendProbesTo) {
+                    Probe.Request probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), requestedType);
+                    trigger(probe, networkPort);
                 }
             }
         }
@@ -348,10 +346,10 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<Probe.Request> handleProbeRequest = new Handler<Probe.Request>() {
         @Override
         public void handle(Probe.Request event) {
-            Snapshot.probeRequested(self, activeJobs.size(), pendingJobs.size());
+            Snapshot.probeRequested(self, activeJobs.size(), pendingJobs.size(), event.getType());
 
             int nbPendingJobs = activeJobs.size() + pendingJobs.size();
-            Probe.Response res = new Probe.Response(self, event.getSource(), event.getId(), nbPendingJobs, event.getNbProbes());
+            Probe.Response res = new Probe.Response(self, event.getSource(), event.getId(), nbPendingJobs, event.getNbProbes(), event.getType());
             trigger(res, networkPort);
         }
     };
@@ -367,7 +365,7 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<Probe.Response> handleProbeResponse = new Handler<Probe.Response>() {
         @Override
         public void handle(Probe.Response event) {
-            Snapshot.probeResponded(self);
+            Snapshot.probeResponded(self, event.getType());
 
             ProbeInfos probeInfos = new ProbeInfos(event.getSource(), event.getNbPendingJobs(), event.getNbProbes());
             outstandingProbes.get(event.getId()).add(probeInfos);
