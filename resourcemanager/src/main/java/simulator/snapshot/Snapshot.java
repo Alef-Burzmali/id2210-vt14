@@ -34,12 +34,12 @@ public class Snapshot {
 
 
     public static void addPeer(Address address, AvailableResources availableResources) {
-        printInFile(address.getId()+" ("+counter+"): *** joining ***");
+//        printInFile(address.getId()+" ("+counter+"): *** joining ***");
         peers.put(address, new PeerInfo(availableResources));
     }
 
     public static void removePeer(Address address) {
-        printInFile(address.getId()+" ("+counter+"): *** crashing ***");
+//        printInFile(address.getId()+" ("+counter+"): *** crashing ***");
         peers.remove(address);
     }
 
@@ -57,11 +57,11 @@ public class Snapshot {
     }
     
     public static void cyclonSampleReceived(Address self, int size) {
-        //printInFile(self.getId()+" ("+counter+"): Received cyclon sample of size "+size);
+//        printInFile(self.getId()+" ("+counter+"): Received cyclon sample of size "+size);
     }
     
     public static void tmanSampleReceived(Address self, ResourceType type, int size) {
-        //printInFile(self.getId()+" ("+counter+"): Received tman sample of size "+size+" for resource "+type);
+//        printInFile(self.getId()+" ("+counter+"): Received tman sample of size "+size+" for resource "+type);
     }
     
     public static void resourceDemand(Address self, int cpus, int memory, long jobId) {
@@ -77,10 +77,13 @@ public class Snapshot {
     }
     
     public static void probeRequested(Address self, long jobId, int activeJobs, int pendingJobs, ResourceType type, int hops) {
-        printInFile(self.getId()+" ("+counter+"): probe "+jobId+" request ("+activeJobs+"A + "+pendingJobs+"P) for "+type+" and "+hops+" hops");
+//        printInFile(self.getId()+" ("+counter+"): probe "+jobId+" request ("+activeJobs+"A + "+pendingJobs+"P) for "+type+" and "+hops+" hops");
     }
-    public static void probeResponded(Address self, long jobId, ResourceType type) {
-        printInFile(self.getId()+" ("+counter+"): probe "+jobId+" responded for "+type);
+    public static void probeResponded(Address self, Address source, long jobId) {
+//        printInFile(self.getId()+" ("+counter+"): probe "+jobId+" responded by "+source.getId());
+    }
+    public static void probeCanceled(Address self, long jobId) {
+//        printInFile(self.getId()+" ("+counter+"): probe "+jobId+" canceled");
     }
     
     public static void jobTimeout(Address self, Address worker, long jobId) {
@@ -90,31 +93,27 @@ public class Snapshot {
     }
     
     public static void startingJob(Address self, long jobId, long batchId, int pendingJobs, int remainingCpu, int remainingMemory) {
-        printInFile(self.getId()+" ("+counter+"): job "+batchId+"-"+jobId+" started - pending "+pendingJobs);
+//        printInFile(self.getId()+" ("+counter+"): job "+batchId+"-"+jobId+" started - pending "+pendingJobs);
     }
     
     public static void releaseJob(Address self, long jobId) {
-        printInFile(self.getId()+" ("+counter+"): job "+jobId+" released");
+//        printInFile(self.getId()+" ("+counter+"): job "+jobId+" released");
     }
     
     public static void allocateJob(Address self, long jobId) {
         long waitingTime = System.currentTimeMillis()/1000L - jobs.get(jobId);
         waitingTimes.add(waitingTime);
-        printInFile(self.getId()+" ("+counter+"): job "+jobId+" allocated - waited "+waitingTime+" ms");
+//        printInFile(self.getId()+" ("+counter+"): job "+jobId+" allocated - waited "+waitingTime+" ms");
     }
     
     public static void allocateJobInBatch(Address self, long batchId, long jobId) {
         long waitingTime = System.currentTimeMillis()/1000L - jobs.get(jobId);
         batchWaitingTimes.add(waitingTime);
-        printInFile(self.getId()+" ("+counter+"): job "+batchId+"-"+jobId+" allocated");
+//        printInFile(self.getId()+" ("+counter+"): job "+batchId+"-"+jobId+" allocated");
     }
     
     public static void allJobsInBatchAllocated(Address self, long batchId) {
-        printInFile(self.getId()+" ("+counter+"): all jobs of batch "+batchId+" allocated");
-    }
-    
-    public static void allocationRequest(Address self, long jobId, long batchId, Address source, int pending) {
-        printInFile(self.getId()+" ("+counter+"): being allocated job "+batchId+"-"+jobId+" from "+source.getId()+" - pending jobs "+pending);
+//        printInFile(self.getId()+" ("+counter+"): all jobs of batch "+batchId+" allocated");
     }
 
     public static void printInFile(String str){
@@ -123,10 +122,14 @@ public class Snapshot {
     }
 
     public static void report() {
-        String str = prepareReport();
+        String str = prepareReport(false);
+        
+        if (counter % 100 == 0) {
+            System.out.println(str);
+        }
         
 //        System.out.println(str);
-        //FileIO.append(str, FILENAME);
+//        FileIO.append(str, FILENAME);
 //        if (counter > 25) {
 //            finalReport();
 //            System.exit(2);
@@ -134,7 +137,7 @@ public class Snapshot {
     }
     
     public static void finalReport() {
-        String str = prepareReport();
+        String str = prepareReport(true);
         
         HashMap<String, List<Long>> times = new HashMap<String, List<Long>>();
         times.put("Waiting time", waitingTimes);
@@ -155,34 +158,36 @@ public class Snapshot {
         FileIO.append(str, FILENAME);
     }
     
-    private static String prepareReport() {
+    private static String prepareReport(boolean details) {
         String str = new String();
         str += "current time: " + counter++ + "\n";
-        str += reportNetworkState();
-        str += reportDetails();
+        str += reportNetworkState(details);
+        str += reportDetails(details);
         str += "###\n";
         return str;
     }
 
-    private static String reportNetworkState() {
+    private static String reportNetworkState(boolean details) {
         String str = "---\n";
         int totalNumOfPeers = peers.size();
         str += "total number of peers: " + totalNumOfPeers + "\n";
-        for (Address p : peers.keySet()) {
-            PeerInfo info = peers.get(p);
-            str += String.format("%1$s (%2$sC %3$sM) - ", p.getId(), info.getNumFreeCpus(), info.getFreeMemInMbs());
-            for (Address q : info.getNeighbours()) {
-                str += q.getId() + ", ";
+        if (details) {
+            for (Address p : peers.keySet()) {
+                PeerInfo info = peers.get(p);
+                str += String.format("%1$s (%2$sC %3$sM) - ", p.getId(), info.getNumFreeCpus(), info.getFreeMemInMbs());
+                for (Address q : info.getNeighbours()) {
+                    str += q.getId() + ", ";
+                }
+                str += "\n";
             }
             str += "\n";
         }
-        str += "\n";
 
         return str;
     }
 
 
-    private static String reportDetails() {
+    private static String reportDetails(boolean details) {
         String str = "---\n";
         int maxFreeCpus = 0;
         int minFreeCpus = Integer.MAX_VALUE;
