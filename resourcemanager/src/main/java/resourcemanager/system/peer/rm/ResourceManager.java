@@ -32,7 +32,6 @@ import cyclon.system.peer.cyclon.CyclonSamplePort;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashSet;
-import java.util.List;
 
 /**
  * Should have some comments here.
@@ -79,11 +78,11 @@ public final class ResourceManager extends ComponentDefinition {
      * Set of jobs currently processed by the worker
      */
     private LinkedList<Job> activeJobs;
-
+    
     /**
-     * For batch jobs, keeps the number of tasks 
+     * List of workers that have already answered our request for a batch.
      */
-    private HashMap<Long, Integer> jobsRemainingInBatch;
+    private HashMap<Long, HashSet<Address>> workersForBatch;
 
     /**
      * Select if we are using TMan (and gradient) or Cyclon (and random search)
@@ -124,7 +123,7 @@ public final class ResourceManager extends ComponentDefinition {
             outstandingProbes = new HashMap<Long, HashSet<Address>>();
             pendingJobs = new LinkedList<Job>();
             activeJobs = new LinkedList<Job>();
-
+            workersForBatch = new HashMap<Long, HashSet<Address>>();
 
             useGradient = configuration.isGradient();
             if (useGradient) {
@@ -169,34 +168,36 @@ public final class ResourceManager extends ComponentDefinition {
                 trigger(rel, networkPort);
             } else {
                 ManagedJob job = waitingJobs.get(jobId);
-                long batchId = job.getIdBatch();
                 
-                if (batchId != -1) {
-                    jobsRemainingInBatch.put(batchId,
-                            jobsRemainingInBatch.get(batchId) - 1);
-                    Snapshot.allocateJobInBatch(self, batchId, jobId);
-
-                    if (jobsRemainingInBatch.get(batchId) == 0) {
-                        jobsRemainingInBatch.remove(batchId);
-                        Snapshot.allJobsInBatchAllocated(self, batchId);
-                    }
-                } else {
-                    Snapshot.allocateJob(self, jobId);
-                }
-
-                // cancel the remaining probes for this job
                 HashSet<Address> probes = outstandingProbes.get(jobId);
                 probes.remove(event.getSource());
-                for (Address p : probes) {
-                    trigger(new Probe.Cancel(self, p, jobId, job), networkPort);
+                
+                if (!workersForBatch.containsKey(jobId)) {
+                    workersForBatch.put(jobId, new HashSet<Address>());
                 }
+                HashSet<Address> workers = workersForBatch.get(jobId);
+                workers.add(event.getSource());
                 
-                int processingTime = job.getTimeToHoldResource();
-                waitingJobs.remove(jobId);
-                
-                ScheduleTimeout jobProcessingTimeout = new ScheduleTimeout(processingTime);
-                jobProcessingTimeout.setTimeoutEvent(new JobProcessingTimeout(jobProcessingTimeout, jobId, event.getSource()));
-                trigger(jobProcessingTimeout, timerPort);
+                if (job.getJobsInBatch() <= workers.size()) {
+                    // ok, job has begun
+                    waitingJobs.remove(jobId);                    
+                    Snapshot.allocateJob(self, jobId, job.getJobsInBatch());
+                    
+                    // cancel the remaining probes for this job
+                    for (Address p : probes) {
+                        trigger(new Probe.Cancel(self, p, jobId, job), networkPort);
+                    }
+                    outstandingProbes.remove(jobId);
+                    
+                    // prepare the timeout for our workers
+                    int processingTime = job.getTimeToHoldResource();
+                    for (Address w : workers) {
+                        ScheduleTimeout jobProcessingTimeout = new ScheduleTimeout(processingTime);
+                        jobProcessingTimeout.setTimeoutEvent(new JobProcessingTimeout(jobProcessingTimeout, jobId, w, job.getJobsInBatch()));
+                        trigger(jobProcessingTimeout, timerPort);
+                    }
+                    workersForBatch.remove(jobId);
+                }
             }
         }
     };
@@ -266,7 +267,7 @@ public final class ResourceManager extends ComponentDefinition {
              * We pick a fixed number of neighbours at random
              * We send each one a probe (with the id of the job) to check their loads
              */
-            ManagedJob job = new ManagedJob(event.getId(), -1, event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
+            ManagedJob job = new ManagedJob(event.getId(), 1, event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
             waitingJobs.put(event.getId(), job);
             outstandingProbes.put(event.getId(), new HashSet<Address>());
 
@@ -291,9 +292,8 @@ public final class ResourceManager extends ComponentDefinition {
             if (neighbours.size() != 0) {
                 Snapshot.resourceBatchDemand(self, event.getNumCpus(), event.getMemoryInMbs(), event.getNbNodes(), event.getId());
 
-                jobsRemainingInBatch.put(event.getId(), event.getNbNodes());
                 int nbNodes = event.getNbNodes();
-                ManagedJob job = new ManagedJob(event.getId(), event.getId(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
+                ManagedJob job = new ManagedJob(event.getId(), event.getNbNodes(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
                 waitingJobs.put(event.getId(), job);
                 outstandingProbes.put(event.getId(), new HashSet<Address>());
 
@@ -390,7 +390,7 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<JobProcessingTimeout> handleJobProcessingTimeout = new Handler<JobProcessingTimeout>() {
         @Override
         public void handle(JobProcessingTimeout event) {
-            Snapshot.jobTimeout(self, event.getWorker(), event.getId());
+            Snapshot.jobTimeout(self, event.getWorker(), event.getId(), event.getJobsInBatch());
 
             RequestResources.Release rel = new RequestResources.Release(self, event.getWorker(), event.getId());
             trigger(rel, networkPort);
@@ -412,9 +412,9 @@ public final class ResourceManager extends ComponentDefinition {
                 pendingJobs.removeFirst();
                 activeJobs.add(firstJob);
                 
-                Snapshot.startingJob(self, firstJob.getId(), firstJob.getIdBatch(), pendingJobs.size(), availableResources.getNumFreeCpus(), availableResources.getFreeMemInMbs());
+                Snapshot.startingJob(self, firstJob.getId(), firstJob.getJobsInBatch(), pendingJobs.size(), availableResources.getNumFreeCpus(), availableResources.getFreeMemInMbs());
 
-                RequestResources.Response res = new RequestResources.Response(self, firstJob.getInitiator(), true, firstJob.getId(), firstJob.getIdBatch());
+                RequestResources.Response res = new RequestResources.Response(self, firstJob.getInitiator(), true, firstJob.getId(), firstJob.getJobsInBatch());
                 trigger(res, networkPort);
                 tryToProcessNewJob();
             }
@@ -440,15 +440,15 @@ public final class ResourceManager extends ComponentDefinition {
         static final int MEMORY_WEIGHT = 1;
 
         private final Address initiator;
-        private final long idBatch;
+        private final int jobsInBatch;
         private final long id;
         private final int numCPUs;
         private final int amountMemInMb;
         private final ResourceType type;
 
-        public Job(long id, long idBatch, int numCPUs, int amountMemInMb, Address initiator) {
+        public Job(long id, int jobsInBatch, int numCPUs, int amountMemInMb, Address initiator) {
             this.id = id;
-            this.idBatch = idBatch;
+            this.jobsInBatch = jobsInBatch;
             this.numCPUs = numCPUs;
             this.amountMemInMb = amountMemInMb;
             this.initiator = initiator;
@@ -462,8 +462,8 @@ public final class ResourceManager extends ComponentDefinition {
             }
         }
 
-        public long getIdBatch() {
-            return idBatch;
+        public int getJobsInBatch() {
+            return jobsInBatch;
         }
 
         public Address getInitiator() {
@@ -510,8 +510,8 @@ public final class ResourceManager extends ComponentDefinition {
 
         private final int timeToHoldResource;
 
-        public ManagedJob(long id, long idBatch, int numCPUs, int amountMemInMb, Address initiator, int timeToHoldResource) {
-            super(id, idBatch, numCPUs, amountMemInMb, initiator);
+        public ManagedJob(long id, int jobsInBatch, int numCPUs, int amountMemInMb, Address initiator, int timeToHoldResource) {
+            super(id, jobsInBatch, numCPUs, amountMemInMb, initiator);
             this.timeToHoldResource = timeToHoldResource;
         }
 

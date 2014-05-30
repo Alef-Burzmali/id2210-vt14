@@ -36,7 +36,7 @@ public class Main {
          *      expected result -> better performance with the gradient
          * Scenario 6: completly random tasks
          */
-        Scenario scenario = new Scenario5();
+        Scenario scenario = new Scenario1();
         scenario.setSeed(seed);
         scenario.getScenario().simulate(DataCenterSimulationMain.class);
     }

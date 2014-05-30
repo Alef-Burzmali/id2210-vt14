@@ -5,21 +5,27 @@ import se.sics.kompics.timer.ScheduleTimeout;
 import se.sics.kompics.timer.Timeout;
 
 public class JobProcessingTimeout extends Timeout {
-	
-	private final long id;
-	private final Address worker;
-	
-	public JobProcessingTimeout(ScheduleTimeout request, long id, Address worker) {
-		super(request);
-		this.id = id;
-		this.worker = worker;
-	}
 
-	public long getId() {
-		return id;
-	}
+    private final long id;
+    private final Address worker;
+    private final int jobsInBatch;
 
-	public Address getWorker() {
-		return worker;
-	}
+    public JobProcessingTimeout(ScheduleTimeout request, long id, Address worker, int jobsInBatch) {
+        super(request);
+        this.id = id;
+        this.worker = worker;
+        this.jobsInBatch = jobsInBatch;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public Address getWorker() {
+        return worker;
+    }
+    
+    public int getJobsInBatch() {
+        return jobsInBatch;
+    }
 }

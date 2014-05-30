@@ -26,7 +26,7 @@ public class Scenario5 extends Scenario {
             StochasticProcess process1 = new StochasticProcess() {
                 {
                     eventInterArrivalTime(constant(500)); // 0.5 ms
-                    raise(800, Operations.requestResources(),
+                    raise(790, Operations.requestResources(),
                             uniform(0, Integer.MAX_VALUE),
                             constant(2), constant(1000),
                             constant(1000 * 200) // 200 ms
@@ -54,6 +54,7 @@ public class Scenario5 extends Scenario {
             };
             process0.start();
             process1.startAfterTerminationOf(2000, process0);
+            process2.startAfterTerminationOf(0, process1);
             terminateProcess.startAfterTerminationOf(500 * 1000, process1);
         }
     };

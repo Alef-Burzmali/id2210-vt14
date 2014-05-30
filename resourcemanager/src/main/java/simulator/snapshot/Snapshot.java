@@ -34,7 +34,7 @@ public class Snapshot {
 
 
     public static void addPeer(Address address, AvailableResources availableResources) {
-//        printInFile(address.getId()+" ("+counter+"): *** joining ***");
+        printInFile(address.getId()+" ("+counter+"): *** joining ***");
         peers.put(address, new PeerInfo(availableResources));
     }
 
@@ -73,6 +73,7 @@ public class Snapshot {
     
     public static void resourceBatchDemand(Address self, int cpus, int memory, int nodes, long batchId) {
         batches.put(batchId, (long) counter);
+        totalJobs++;
         printInFile(self.getId()+" ("+counter+"): batch requested ("+nodes+"N, "+cpus+"C, "+memory+"MB) - id "+batchId);
     }
     
@@ -86,10 +87,16 @@ public class Snapshot {
 //        printInFile(self.getId()+" ("+counter+"): probe "+jobId+" canceled");
     }
     
-    public static void jobTimeout(Address self, Address worker, long jobId) {
-        long executionTime = (long) counter - jobs.remove(jobId);
-        totalTimes.add(executionTime);
-        printInFile(self.getId()+" ("+counter+"): job "+jobId+" completed on "+worker.getId() + " (total time: "+executionTime+" ms)");
+    public static void jobTimeout(Address self, Address worker, long jobId, int jobsInBatch) {
+        if (jobsInBatch == 1) {
+            long executionTime = (long) counter - jobs.remove(jobId);
+            totalTimes.add(executionTime);
+            printInFile(self.getId()+" ("+counter+"): job "+jobId+" completed on "+worker.getId() + " (total time: "+executionTime+" ms)");
+        } else if (batches.containsKey(jobId)) {
+            long executionTime = (long) counter - batches.remove(jobId);
+            totalTimes.add(executionTime);
+            printInFile(self.getId()+" ("+counter+"): batch "+jobId+" completed (total time: "+executionTime+" ms)");
+        }
     }
     
     public static void startingJob(Address self, long jobId, long batchId, int pendingJobs, int remainingCpu, int remainingMemory) {
@@ -100,20 +107,16 @@ public class Snapshot {
 //        printInFile(self.getId()+" ("+counter+"): job "+jobId+" released");
     }
     
-    public static void allocateJob(Address self, long jobId) {
-        long waitingTime = counter - jobs.get(jobId);
-        waitingTimes.add(waitingTime);
-//        printInFile(self.getId()+" ("+counter+"): job "+jobId+" allocated - waited "+waitingTime+" ms");
-    }
-    
-    public static void allocateJobInBatch(Address self, long batchId, long jobId) {
-        long waitingTime = counter - jobs.get(jobId);
-        batchWaitingTimes.add(waitingTime);
-//        printInFile(self.getId()+" ("+counter+"): job "+batchId+"-"+jobId+" allocated");
-    }
-    
-    public static void allJobsInBatchAllocated(Address self, long batchId) {
-//        printInFile(self.getId()+" ("+counter+"): all jobs of batch "+batchId+" allocated");
+    public static void allocateJob(Address self, long jobId, int jobsInBatch) {
+        if (jobsInBatch == 1) {
+            long waitingTime = counter - jobs.get(jobId);
+            waitingTimes.add(waitingTime);
+//            printInFile(self.getId()+" ("+counter+"): job "+jobId+" allocated - waited "+waitingTime+" ms");
+        } else {
+            long waitingTime = counter - batches.get(jobId);
+            batchWaitingTimes.add(waitingTime);
+//            printInFile(self.getId()+" ("+counter+"): batch "+jobId+" of "+jobsInBatch+" allocated - waited "+waitingTime+" ms");
+        }
     }
 
     public static void printInFile(String str){
@@ -229,7 +232,7 @@ public class Snapshot {
             
             // 95th percentile
             int j99 = (int) Math.ceil(size * 0.99) - 1;
-            p99 = times.get(99);
+            p99 = times.get(j99);
         }
         
         long[] result = {(long)size, min, max, mean, p99};
