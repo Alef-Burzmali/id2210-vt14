@@ -34,7 +34,10 @@ public class Main {
          *          repartition of the load.
          * Scenario 4: 3 different kinds of tasks -> mostly CPU, mostly memory and mixed
          *      expected result -> better performance with the gradient
+         * Scenario 5: 10% of the tasks are batches which requests 20% of the nodes
+         *      expected result -> batch request should take longer to allocate
          * Scenario 6: completly random tasks
+         *      expected result -> same as scenario 4
          */
         Scenario scenario = new Scenario1();
         scenario.setSeed(seed);

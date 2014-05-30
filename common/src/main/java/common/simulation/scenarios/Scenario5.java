@@ -26,22 +26,22 @@ public class Scenario5 extends Scenario {
             StochasticProcess process1 = new StochasticProcess() {
                 {
                     eventInterArrivalTime(constant(500)); // 0.5 ms
-                    raise(790, Operations.requestResources(),
+                    raise(500, Operations.requestResources(),
                             uniform(0, Integer.MAX_VALUE),
                             constant(2), constant(1000),
-                            constant(1000 * 200) // 200 ms
+                            constant(1000 * 100) // 100 ms
                     );
                 }
             };
             
             StochasticProcess process2 = new StochasticProcess() {
                 {
-                    eventInterArrivalTime(constant(500)); // 0.5 ms
-                    raise(10, Operations.requestBatchResources(),
+                    eventInterArrivalTime(constant(5000)); // 5 ms
+                    raise(100, Operations.requestBatchResources(),
                             uniform(0, Integer.MAX_VALUE),
                             constant(10),
                             constant(2), constant(1000),
-                            constant(1000 * 200) // 200 ms
+                            constant(1000 * 100) // 100 ms
                     );
                 }
             };
@@ -54,8 +54,8 @@ public class Scenario5 extends Scenario {
             };
             process0.start();
             process1.startAfterTerminationOf(2000, process0);
-            process2.startAfterTerminationOf(0, process1);
-            terminateProcess.startAfterTerminationOf(500 * 1000, process1);
+            process2.startAfterTerminationOf(2100, process0);
+            terminateProcess.startAfterTerminationOf(1000 * 1000, process1);
         }
     };
 

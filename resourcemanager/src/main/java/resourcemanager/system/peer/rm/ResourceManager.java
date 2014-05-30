@@ -289,26 +289,24 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<RequestBatchResource> handleRequestBatchResource = new Handler<RequestBatchResource>() {
         @Override
         public void handle(RequestBatchResource event) {
-            if (neighbours.size() != 0) {
-                Snapshot.resourceBatchDemand(self, event.getNumCpus(), event.getMemoryInMbs(), event.getNbNodes(), event.getId());
+            Snapshot.resourceBatchDemand(self, event.getNumCpus(), event.getMemoryInMbs(), event.getNbNodes(), event.getId());
 
-                int nbNodes = event.getNbNodes();
-                ManagedJob job = new ManagedJob(event.getId(), event.getNbNodes(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
-                waitingJobs.put(event.getId(), job);
-                outstandingProbes.put(event.getId(), new HashSet<Address>());
+            int nbNodes = event.getNbNodes();
+            ManagedJob job = new ManagedJob(event.getId(), event.getNbNodes(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
+            waitingJobs.put(event.getId(), job);
+            outstandingProbes.put(event.getId(), new HashSet<Address>());
 
-                ResourceType requestedType = job.getResourceType();
-                ArrayList<Address> sendProbesTo = selectProbes(NBPROBES * nbNodes, neighbours.get(requestedType));
-                
-                for (Address p : sendProbesTo) {
-                    Probe.Request probe;
-                    if (useGradient) {
-                        probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), 2, job);
-                    } else {
-                        probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), 0, job);
-                    }
-                    trigger(probe, networkPort);
+            ResourceType requestedType = job.getResourceType();
+            ArrayList<Address> sendProbesTo = selectProbes(NBPROBES * nbNodes, neighbours.get(requestedType));
+
+            for (Address p : sendProbesTo) {
+                Probe.Request probe;
+                if (useGradient) {
+                    probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), 2, job);
+                } else {
+                    probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), 0, job);
                 }
+                trigger(probe, networkPort);
             }
         }
     };
