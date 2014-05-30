@@ -32,7 +32,9 @@ import common.simulation.RequestResource;
 import cyclon.system.peer.cyclon.CyclonSample;
 import cyclon.system.peer.cyclon.CyclonSamplePort;
 import cyclon.system.peer.cyclon.PeerDescriptor;
+import java.util.Collection;
 import java.util.EnumMap;
+import java.util.HashSet;
 
 /**
  * Should have some comments here.
@@ -72,7 +74,7 @@ public final class ResourceManager extends ComponentDefinition {
     private HashMap<Long, ManagedJob> managedJobs;
 
     // A hashmap storing probes infos associated with a managed job, indexed by the job id
-    private HashMap<Long, LinkedList<ProbeInfos>> outstandingProbes;
+    private HashMap<Long, HashSet<ProbeInfos>> outstandingProbes;
 
     // FIFO list of jobs to be processed by the worker
     private LinkedList<Job> pendingJobs;
@@ -85,8 +87,6 @@ public final class ResourceManager extends ComponentDefinition {
 
     // For batch jobs, keeps the amount of tasks that have been processed for each job
     private HashMap<Long, Integer> batchJobsProcessed;
-
-    public HashMap<Long, Long> uniqueJobsWaitingTime;
 
     /**
      * Select if we are using TMan (and gradient) or Cyclon (and random search)
@@ -123,10 +123,9 @@ public final class ResourceManager extends ComponentDefinition {
             trigger(rst, timerPort);
 
             managedJobs = new HashMap<Long, ManagedJob>();
-            outstandingProbes = new HashMap<Long, LinkedList<ProbeInfos>>();
+            outstandingProbes = new HashMap<Long, HashSet<ProbeInfos>>();
             pendingJobs = new LinkedList<Job>();
             activeJobs = new LinkedList<Job>();
-            uniqueJobsWaitingTime = new HashMap<Long, Long>();
             batchJobs = new HashMap<Long, Integer>();
             batchJobsProcessed = new HashMap<Long, Integer>();
 
@@ -201,11 +200,7 @@ public final class ResourceManager extends ComponentDefinition {
                     Snapshot.allJobsInBatchAllocated(self, event.getIdBatch());
                 }
             } else {
-                uniqueJobsWaitingTime.put(id, System.currentTimeMillis() / 1000L - uniqueJobsWaitingTime.get(id));
-                Long waited = System.currentTimeMillis() / 1000L - uniqueJobsWaitingTime.get(id);
-                uniqueJobsWaitingTime.remove(id);
-
-                Snapshot.allocateJob(self, id, waited);
+                Snapshot.allocateJob(self, id);
             }
 
             int processingTime = managedJobs.get(id).getTimeToHoldResource();
@@ -257,13 +252,15 @@ public final class ResourceManager extends ComponentDefinition {
             if (useGradient) {
                 return; // we don't care
             }
-            Snapshot.cyclonSampleReceived(self, event.getSample().size());
 
             // receive a new list of neighbours
             // all the lists in neighbours are the same object, only replace one of them
             // it will propagate to all
             neighbours.get(ResourceType.CPU).clear();
             neighbours.get(ResourceType.CPU).addAll(event.getSample());
+            
+            Snapshot.cyclonSampleReceived(self, event.getSample().size());
+            Snapshot.updateNeighbours(self, neighbours.get(ResourceType.CPU));
         }
     };
 
@@ -273,12 +270,14 @@ public final class ResourceManager extends ComponentDefinition {
             if (!useGradient) {
                 return; // we don't care
             }
-            Snapshot.tmanSampleReceived(self, event.getType(), event.getSample().size());
 
             // receive a new list of neighbours
             ResourceType type = event.getType();
             neighbours.get(type).clear();
             neighbours.get(type).addAll(event.getSample());
+            
+            Snapshot.tmanSampleReceived(self, event.getType(), event.getSample().size());
+            Snapshot.updateNeighbours(self, neighbours.get(ResourceType.CPU));
         }
     };
 
@@ -291,21 +290,20 @@ public final class ResourceManager extends ComponentDefinition {
              * We pick a fixed number of neighbours at random
              * We send each one a probe (with the id of the job) to check their loads
              */
-            outstandingProbes.put(event.getId(), new LinkedList<ProbeInfos>());
+            outstandingProbes.put(event.getId(), new HashSet<ProbeInfos>());
             ManagedJob job = new ManagedJob(event.getId(), -1, event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
             managedJobs.put(event.getId(), job);
-            uniqueJobsWaitingTime.put(event.getId(), System.currentTimeMillis() / 1000L);
 
             ResourceType requestedType = job.getResourceType();
-            ArrayList<Address> sendProbesTo;
-            if (useGradient) {
-                sendProbesTo = pickGradient(NBPROBES, neighbours.get(requestedType));
-            } else {
-                sendProbesTo = pickAtRandom(NBPROBES, neighbours.get(requestedType));
-            }
+            ArrayList<Address> sendProbesTo = selectProbes(NBPROBES, neighbours.get(requestedType));
             
             for (Address p : sendProbesTo) {
-                Probe.Request probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), requestedType);
+                Probe.Request probe;
+                if (useGradient) {
+                    probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), 2, requestedType);
+                } else {
+                    probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), 0, requestedType);
+                }
                 trigger(probe, networkPort);
             }
         }
@@ -319,21 +317,21 @@ public final class ResourceManager extends ComponentDefinition {
 
                 batchJobs.put(event.getId(), event.getNbNodes());
                 batchJobsProcessed.put(event.getId(), 0);
-                outstandingProbes.put(event.getId(), new LinkedList<ProbeInfos>());
+                outstandingProbes.put(event.getId(), new HashSet<ProbeInfos>());
                 int nbNodes = event.getNbNodes();
                 ManagedJob job = new ManagedJob(event.getId(), event.getId(), event.getNumCpus(), event.getMemoryInMbs(), self, event.getTimeToHoldResource());
                 managedJobs.put(event.getId(), job);
 
                 ResourceType requestedType = job.getResourceType();
-                ArrayList<Address> sendProbesTo;
-                if (useGradient) {
-                    sendProbesTo = pickGradient(NBPROBES * nbNodes, neighbours.get(requestedType));
-                } else {
-                    sendProbesTo = pickAtRandom(NBPROBES * nbNodes, neighbours.get(requestedType));
-                }
+                ArrayList<Address> sendProbesTo = selectProbes(NBPROBES * nbNodes, neighbours.get(requestedType));
                 
                 for (Address p : sendProbesTo) {
-                    Probe.Request probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), requestedType);
+                    Probe.Request probe;
+                    if (useGradient) {
+                        probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), 2, requestedType);
+                    } else {
+                        probe = new Probe.Request(self, p, event.getId(), sendProbesTo.size(), 0, requestedType);
+                    }
                     trigger(probe, networkPort);
                 }
             }
@@ -346,10 +344,20 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<Probe.Request> handleProbeRequest = new Handler<Probe.Request>() {
         @Override
         public void handle(Probe.Request event) {
-            Snapshot.probeRequested(self, activeJobs.size(), pendingJobs.size(), event.getType());
+            Snapshot.probeRequested(self, event.getId(), activeJobs.size(), pendingJobs.size(), event.getType(), event.getNbHops());
+            
+            if (event.getNbHops() > 0) {
+                ResourceType requestedType = event.getType();
+                ArrayList<Address> sendProbesTo = selectProbes(NBPROBES, neighbours.get(requestedType));
+                
+                for (Address p : sendProbesTo) {
+                    Probe.Request probe = new Probe.Request(event.getSource(), p, event.getId(), event.getNbProbes(), event.getNbHops() - 1, requestedType);
+                    trigger(probe, networkPort);
+                }
+            }
 
             int nbPendingJobs = activeJobs.size() + pendingJobs.size();
-            Probe.Response res = new Probe.Response(self, event.getSource(), event.getId(), nbPendingJobs, event.getNbProbes(), event.getType());
+            Probe.Response res = new Probe.Response(self, event.getSource(), event.getId(), nbPendingJobs, event.getNbProbes(), event.getNbHops(), event.getType());
             trigger(res, networkPort);
         }
     };
@@ -365,11 +373,15 @@ public final class ResourceManager extends ComponentDefinition {
     Handler<Probe.Response> handleProbeResponse = new Handler<Probe.Response>() {
         @Override
         public void handle(Probe.Response event) {
-            Snapshot.probeResponded(self, event.getType());
+            Snapshot.probeResponded(self, event.getId(), event.getType());
 
+            if (!outstandingProbes.containsKey(event.getId())) {
+                return;
+            }
             ProbeInfos probeInfos = new ProbeInfos(event.getSource(), event.getNbPendingJobs(), event.getNbProbes());
             outstandingProbes.get(event.getId()).add(probeInfos);
-            if (outstandingProbes.get(event.getId()).size() == event.getNbProbes()) {
+            
+            if (event.getNbHops() == 0 && outstandingProbes.get(event.getId()).size() >= event.getNbProbes()) {
                 if (batchJobs.containsKey(event.getId())) {
                     int nbNodes = batchJobs.get(event.getId());
                     LinkedList<Address> bestMWorkers = pickBestMWorkers(outstandingProbes.get(event.getId()), nbNodes);
@@ -456,6 +468,23 @@ public final class ResourceManager extends ComponentDefinition {
         public int getNbPendingJobs() {
             return nbPendingJobs;
         }
+        
+        @Override
+        public int hashCode() {
+            return worker.hashCode();
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj == null) {
+                return false;
+            }
+            if (getClass() != obj.getClass()) {
+                return false;
+            }
+            final ProbeInfos other = (ProbeInfos) obj;
+            return this.worker == other.worker || (this.worker != null && this.worker.equals(other.worker));
+        }
     }
 
     /*
@@ -541,9 +570,9 @@ public final class ResourceManager extends ComponentDefinition {
     }
 
     /**
-     * Pick at most maxProbes among peers+{self}
+     * Pick at most maxProbes among peers+{self}.
      */
-    private ArrayList<Address> pickAtRandom(int maxProbes, ArrayList<Address> peers) {
+    private ArrayList<Address> selectProbes(int maxProbes, ArrayList<Address> peers) {
         ArrayList<Address> randomList = new ArrayList<Address>(peers);
         randomList.add(self);
 
@@ -552,12 +581,12 @@ public final class ResourceManager extends ComponentDefinition {
         return new ArrayList<Address>(randomList.subList(0, nbProbes));
     }
 
-    private Address pickBestWorker(LinkedList<ProbeInfos> probeInfosList) {
+    private Address pickBestWorker(Collection<ProbeInfos> probeInfosList) {
         ProbeInfos fewerPendingJobs = Collections.min(probeInfosList, new ProbeComparatorPerPendingJob());
         return fewerPendingJobs.getWorker();
     }
 
-    private LinkedList<Address> pickBestMWorkers(LinkedList<ProbeInfos> probeInfosList, int nbDesiredNodes) {
+    private LinkedList<Address> pickBestMWorkers(Collection<ProbeInfos> probeInfosList, int nbDesiredNodes) {
         LinkedList<ProbeInfos> probeList = new LinkedList<ProbeInfos>(probeInfosList);
         Collections.sort(probeList, new ProbeComparatorPerPendingJob());
 

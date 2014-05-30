@@ -231,7 +231,7 @@ public final class TMan extends ComponentDefinition {
         }
         
         rank(set);
-        int keepNPeers = Math.min(5, set.size());
+        int keepNPeers = Math.min(10, set.size());
         tmanPartners = new ArrayList<PeerDescriptor>(set.subList(0, keepNPeers));
     }
     

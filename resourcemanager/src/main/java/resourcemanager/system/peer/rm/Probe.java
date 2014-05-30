@@ -19,16 +19,22 @@ public class Probe {
     public static class Request extends Message {
 
         private final long id;
-        private final int nbProbes;
+        private final int nbHops;
         private final ResourceType type;
+        private final int nbProbes;
 
-        public Request(Address source, Address destination, long id, int nbProbes, ResourceType type) {
+        public Request(Address source, Address destination, long id, int nbProbes, int nbHops, ResourceType type) {
             super(source, destination);
             this.id = id;
             this.nbProbes = nbProbes;
+            this.nbHops = nbHops;
             this.type = type;
         }
 
+        public int getNbHops() {
+            return nbHops;
+        }
+        
         public int getNbProbes() {
             return nbProbes;
         }
@@ -51,17 +57,23 @@ public class Probe {
 
         private final long id;
         private final int nbPendingJobs;
-        private final int nbProbes;
+        private final int nbHops;
         private final ResourceType type;
+        private final int nbProbes;
 
-        public Response(Address source, Address destination, long id, int nbPendingJobs, int nbProbes, ResourceType type) {
+        public Response(Address source, Address destination, long id, int nbPendingJobs, int nbProbes, int nbHops, ResourceType type) {
             super(source, destination);
             this.id = id;
             this.nbPendingJobs = nbPendingJobs;
             this.nbProbes = nbProbes;
+            this.nbHops = nbHops;
             this.type = type;
         }
 
+        public int getNbHops() {
+            return nbHops;
+        }
+        
         public int getNbProbes() {
             return nbProbes;
         }

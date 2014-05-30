@@ -76,11 +76,11 @@ public class Snapshot {
         printInFile(self.getId()+" ("+counter+"): batch requested ("+nodes+"N, "+cpus+"C, "+memory+"MB) - id "+batchId);
     }
     
-    public static void probeRequested(Address self, int activeJobs, int pendingJobs, ResourceType type) {
-        printInFile(self.getId()+" ("+counter+"): probe request ("+activeJobs+"A + "+pendingJobs+"P) for "+type);
+    public static void probeRequested(Address self, long jobId, int activeJobs, int pendingJobs, ResourceType type, int hops) {
+        printInFile(self.getId()+" ("+counter+"): probe "+jobId+" request ("+activeJobs+"A + "+pendingJobs+"P) for "+type+" and "+hops+" hops");
     }
-    public static void probeResponded(Address self, ResourceType type) {
-        printInFile(self.getId()+" ("+counter+"): probe responded for "+type);
+    public static void probeResponded(Address self, long jobId, ResourceType type) {
+        printInFile(self.getId()+" ("+counter+"): probe "+jobId+" responded for "+type);
     }
     
     public static void jobTimeout(Address self, Address worker, long jobId) {
@@ -97,7 +97,7 @@ public class Snapshot {
         printInFile(self.getId()+" ("+counter+"): job "+jobId+" released");
     }
     
-    public static void allocateJob(Address self, long jobId, long waited) {
+    public static void allocateJob(Address self, long jobId) {
         long waitingTime = System.currentTimeMillis()/1000L - jobs.get(jobId);
         waitingTimes.add(waitingTime);
         printInFile(self.getId()+" ("+counter+"): job "+jobId+" allocated - waited "+waitingTime+" ms");
@@ -124,8 +124,13 @@ public class Snapshot {
 
     public static void report() {
         String str = prepareReport();
-        //System.out.println(str);
+        
+//        System.out.println(str);
         //FileIO.append(str, FILENAME);
+//        if (counter > 25) {
+//            finalReport();
+//            System.exit(2);
+//        }
     }
     
     public static void finalReport() {
@@ -163,6 +168,15 @@ public class Snapshot {
         String str = "---\n";
         int totalNumOfPeers = peers.size();
         str += "total number of peers: " + totalNumOfPeers + "\n";
+        for (Address p : peers.keySet()) {
+            PeerInfo info = peers.get(p);
+            str += String.format("%1$s (%2$sC %3$sM) - ", p.getId(), info.getNumFreeCpus(), info.getFreeMemInMbs());
+            for (Address q : info.getNeighbours()) {
+                str += q.getId() + ", ";
+            }
+            str += "\n";
+        }
+        str += "\n";
 
         return str;
     }
